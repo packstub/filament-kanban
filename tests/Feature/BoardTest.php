@@ -72,6 +72,18 @@ it('pages each column', function () {
         ->and($board->getState()[0]['count'])->toBe(5);
 });
 
+it('keeps the pages already loaded on a refresh, up to ten pages', function () {
+    foreach (range(1, 25) as $i) {
+        task("Task {$i}");
+    }
+
+    $board = board()->perColumn(2);
+
+    expect($board->getState(loaded: ['todo' => 4])[0]['cards'])->toHaveCount(4)
+        ->and($board->getState(loaded: ['todo' => 1])[0]['cards'])->toHaveCount(2)
+        ->and($board->getState(loaded: ['todo' => 500])[0]['cards'])->toHaveCount(20);
+});
+
 it('searches attributes and relationships, case-insensitively', function () {
     $acme = project('Acme Corp');
     task('Invoice run');

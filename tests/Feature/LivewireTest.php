@@ -61,3 +61,13 @@ it('refreshes with a search and loads more cards', function () {
         ->call('kanbanMore', 'todo', 1)
         ->assertReturned(fn ($cards) => count($cards) === 1 && $cards[0]['title'] === 'Beta');
 });
+
+it('refreshes as many cards as the browser already shows', function () {
+    foreach (range(1, 3) as $i) {
+        task("Task {$i}");
+    }
+
+    Livewire::test(TaskBoard::class)
+        ->call('kanbanRefresh', '', [], ['todo' => 3])
+        ->assertReturned(fn ($result) => count($result['columns'][0]['cards']) === 3);
+});

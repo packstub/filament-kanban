@@ -2,6 +2,7 @@
 
 namespace Packstub\Kanban\Concerns;
 
+use Filament\Actions\Contracts\HasActions;
 use Livewire\Attributes\Renderless;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
@@ -26,12 +27,13 @@ trait InteractsWithKanban
 
     /**
      * @param  array<string, mixed>  $filters
+     * @param  array<string, int>  $loaded  cards already shown per column, reloaded as many
      * @return array{columns: list<array<string, mixed>>}
      */
     #[Renderless]
-    public function kanbanRefresh(string $search = '', array $filters = []): array
+    public function kanbanRefresh(string $search = '', array $filters = [], array $loaded = []): array
     {
-        return ['columns' => $this->getKanban()->getState($search, $filters)];
+        return ['columns' => $this->getKanban()->getState($search, $filters, $loaded)];
     }
 
     /**
@@ -83,6 +85,9 @@ trait InteractsWithKanban
     {
         $board = $this->getKanban();
 
+        // Card and create actions need Filament's action system on the component.
+        $actions = $this instanceof HasActions;
+
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
             'columns' => $board->getState(),
@@ -97,9 +102,9 @@ trait InteractsWithKanban
                 'label' => $action->getLabel(),
                 'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
                 'color' => is_string($color = $action->getColor()) ? $color : null,
-            ], $board->getCardActions()),
+            ], $actions ? $board->getCardActions() : []),
             'cardAction' => $board->getCardAction(),
-            'createAction' => ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
+            'createAction' => $actions && ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
             'i18n' => __('packstub-kanban::kanban'),
         ];
     }

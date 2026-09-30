@@ -1,6 +1,7 @@
 <?php
 
 use Livewire\Livewire;
+use Packstub\Kanban\Tests\Fixtures\PlainBoard;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
@@ -17,6 +18,13 @@ it('offers the card actions, the click action and the create action to the brows
         ->and($config['cardActions'][1]['color'])->toBe('danger')
         ->and($config['cardAction'])->toBe('edit')
         ->and($config['createAction']['name'])->toBe('create');
+});
+
+it('offers no actions on a component without Filament\'s action system', function () {
+    $config = Livewire::test(PlainBoard::class)->instance()->getKanbanConfig();
+
+    expect($config['cardActions'])->toBe([])
+        ->and($config['createAction'])->toBeNull();
 });
 
 it('edits a card in a modal and tells the board to refresh', function () {

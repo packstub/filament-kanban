@@ -16,7 +16,7 @@
     x-load-css="[@js(FilamentAsset::getStyleHref('kanban', 'packstub/filament-kanban'))]"
     x-data="packstubKanban(@js($config))"
     x-on:keydown.escape.window="menu = null"
-    x-on:packstub-kanban-refresh.window="refresh()"
+    x-on:packstub-kanban-refresh.window="refresh(true)"
     class="pk"
     :class="{ 'pk-is-dragging': dragging }"
 >
@@ -174,7 +174,7 @@
                     <span x-text="dragging && canDrop(dragging.from, column.name) ? t.drop_here : (search ? t.no_match : t.empty)"></span>
                 </div>
 
-                <button type="button" class="pk-more" x-show="column.cards.length < column.count && ! folded[column.name] && ! search" x-init="observeMore($el, column)" x-on:click="more(column)" :disabled="loading[column.name]">
+                <button type="button" class="pk-more" :data-column="column.name" x-show="column.cards.length < column.count && ! folded[column.name] && ! search" x-init="observeMore($el, column)" x-on:click="more(column)" :disabled="loading[column.name]">
                     <span x-text="t.more"></span>
                     <span x-text="'(' + (column.count - column.cards.length) + ')'"></span>
                 </button>

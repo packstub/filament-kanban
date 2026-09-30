@@ -70,7 +70,7 @@ export default function packstubKanban(config) {
             if (config.poll) {
                 this.poller = setInterval(() => {
                     if (! document.hidden && ! this.dragging && ! this.pending && ! this.menu) {
-                        this.refresh()
+                        this.refresh(true)
                     }
                 }, config.poll)
             }
@@ -298,12 +298,15 @@ export default function packstubKanban(config) {
             this.refreshTimer = setTimeout(() => this.refresh(), 250)
         },
 
-        refresh() {
+        // A search or filter starts every column over; a background refresh (a poll, an
+        // action) keeps the pages already loaded and gives way to a card in the air.
+        refresh(background = false) {
             clearTimeout(this.refreshTimer)
             const seq = ++this.refreshSeq
+            const loaded = background ? Object.fromEntries(this.columns.map((c) => [c.name, c.cards.length])) : {}
 
-            this.$wire.kanbanRefresh(this.search, this.active).then((result) => {
-                if (seq !== this.refreshSeq || ! result) {
+            this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
+                if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
                     return
                 }
 
@@ -343,7 +346,17 @@ export default function packstubKanban(config) {
                     const known = new Set(column.cards.map((c) => c.id))
                     column.cards.push(...(cards || []).filter((c) => ! known.has(c.id)))
                 })
-                .finally(() => (this.loading[column.name] = false))
+                .finally(() => {
+                    this.loading[column.name] = false
+                    // Still in view (a short page)? Observing again reports it, and the next page loads.
+                    this.$nextTick(() => {
+                        const el = this.$root.querySelector(`.pk-more[data-column="${CSS.escape(column.name)}"]`)
+                        if (el && this.moreObserver) {
+                            this.moreObserver.unobserve(el)
+                            this.moreObserver.observe(el)
+                        }
+                    })
+                })
         },
 
         /* ------------------------------------------------------------ view preferences */

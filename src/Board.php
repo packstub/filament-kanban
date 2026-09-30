@@ -398,9 +398,10 @@ class Board
      * Everything the browser needs to draw the board.
      *
      * @param  array<string, mixed>  $filters
+     * @param  array<string, int>  $loaded  cards the browser already shows per column, kept on a refresh
      * @return list<array<string, mixed>>
      */
-    public function getState(string $search = '', array $filters = []): array
+    public function getState(string $search = '', array $filters = [], array $loaded = []): array
     {
         $columns = $this->getColumns();
         $counts = $this->counts($search, $filters);
@@ -418,15 +419,16 @@ class Board
             'creatable' => $this->createAction !== null && $column->isDroppable() && $column->isCreatable(),
             'summary' => $this->getSummary($column->getName(), $search, $filters),
             'count' => $counts[$column->getName()] ?? 0,
-            'cards' => $this->getCards($column->getName(), $search, $filters),
+            'cards' => $this->getCards($column->getName(), $search, $filters, limit: (int) ($loaded[$column->getName()] ?? 0)),
         ], $columns);
     }
 
     /**
      * @param  array<string, mixed>  $filters
+     * @param  int  $limit  more than perColumn() to reload pages already shown (at most 10 pages)
      * @return list<array<string, mixed>>
      */
-    public function getCards(string $columnName, string $search = '', array $filters = [], int $offset = 0): array
+    public function getCards(string $columnName, string $search = '', array $filters = [], int $offset = 0, int $limit = 0): array
     {
         $column = $this->getColumn($columnName);
 
@@ -444,7 +446,7 @@ class Board
         return $query
             ->orderBy($query->getModel()->getQualifiedKeyName())
             ->offset(max(0, $offset))
-            ->limit($this->perColumn)
+            ->limit(min(max($this->perColumn, $limit), $this->perColumn * 10))
             ->get()
             ->map(fn (Model $record) => $this->presentCard($record))
             ->all();
