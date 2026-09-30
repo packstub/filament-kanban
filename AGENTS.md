@@ -22,7 +22,7 @@ composer lint               # Pint
 - `tests/Fixtures/TaskBoard.php` — a plain Livewire component (with Filament actions) holding a board, used by the
   Livewire and action tests.
 - `docs/` — the packstub.dev pages (synced by `docs-sync.yml`); `docs/images/` is taken by
-  `demos/filament-kanban-demo/scripts/screenshots.mjs`.
+  `demos/packstub-demo/scripts/screenshots-kanban.mjs` (the suite app's `/sales` panel).
 
 ## Conventions
 
