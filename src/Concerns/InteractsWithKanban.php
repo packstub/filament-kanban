@@ -47,6 +47,11 @@ trait InteractsWithKanban
     }
 
     /**
+     * A refused move answers with its reason. Anything else that goes wrong while
+     * saving (a database error, a bug in moveUsing()) is reported and answered with
+     * a generic message: an exception's text (a query with its bindings, say) is
+     * for the log, never for a notification.
+     *
      * @param  list<string>|null  $order
      * @param  array<string, mixed>  $filters  the board's current ones, for the column summaries
      * @return array{ok: bool, card?: array<string, mixed>, summaries?: array<string, string|null>, message?: string}
@@ -62,6 +67,10 @@ trait InteractsWithKanban
             $card = $board->move($id, $to, $order);
         } catch (MoveRejected $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ['ok' => false, 'message' => __('packstub-kanban::kanban.failed')];
         }
 
         $this->kanbanMoved($id, $to, $card);

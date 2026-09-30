@@ -29,4 +29,6 @@ composer lint               # Pint
 - Rules live on the server: anything the browser checks (`accepts`, `droppable`, `limit`…) `Board::move()` and
   `Board::canCreateIn()` check again.
 - Column rules are evaluated once per request, never per card; cards are plain arrays.
+- Errors: `kanbanMove` answers with a `MoveRejected`'s message only; any other exception is `report()`ed and answered with
+  the generic `failed` string (a `QueryException` carries the SQL and bindings). `Board::move()` lets it propagate.
 - Every change needs a test; `CHANGELOG.md` stays current. Strings in `resources/lang/{en,ro,ru,de}`.

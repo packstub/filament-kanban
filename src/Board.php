@@ -152,8 +152,9 @@ class Board
     }
 
     /**
-     * What a move does. Throw to refuse it: the card snaps back and the exception's
-     * message is shown. Default: set the column attribute and save.
+     * What a move does. Throw MoveRejected to refuse it with a message the user
+     * sees; any other exception is reported and the user sees "The move did not go
+     * through." Default: set the column attribute and save.
      *
      * @param  Closure(Model $record, string $to, string $from): void  $callback
      */
@@ -464,7 +465,9 @@ class Board
 
     /**
      * Move a card, enforcing the column rules on the server whatever the browser
-     * claimed. Returns the card as it looks after the move.
+     * claimed. Returns the card as it looks after the move. A refused move throws
+     * MoveRejected; an exception thrown while saving (the database's, moveUsing()'s)
+     * propagates as it is.
      *
      * @param  list<string>|null  $order  the target column's card ids, top to bottom, when reorderable
      * @return array<string, mixed>
@@ -493,16 +496,13 @@ class Board
                 throw new MoveRejected(__('packstub-kanban::kanban.full', ['column' => $target->getLabel(), 'limit' => $target->getLimit()]));
             }
 
-            try {
-                if ($this->moveUsing) {
-                    ($this->moveUsing)($record, $to, $from);
-                } else {
-                    $record->setAttribute($this->columnAttribute, $to)->save();
-                }
-            } catch (MoveRejected $e) {
-                throw $e;
-            } catch (\Throwable $e) {
-                throw new MoveRejected($e->getMessage() ?: __('packstub-kanban::kanban.failed'), previous: $e);
+            // A MoveRejected thrown here refuses with its message; anything else (a
+            // database error, a bug in the closure) propagates for the caller to report:
+            // its message is not for the user (see InteractsWithKanban::kanbanMove()).
+            if ($this->moveUsing) {
+                ($this->moveUsing)($record, $to, $from);
+            } else {
+                $record->setAttribute($this->columnAttribute, $to)->save();
             }
 
             CardMoved::dispatch($record, $from, $to, $this->key);

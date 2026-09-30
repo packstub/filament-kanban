@@ -142,14 +142,19 @@ it('refuses a card outside the query', function () {
     expect(fn () => $board->move((string) $task->id, 'doing'))->toThrow(MoveRejected::class, 'no longer on the board');
 });
 
-it('runs the app move and turns its exception into a refusal with the same message', function () {
+it('runs the app move: a MoveRejected refuses with its message, any other exception propagates as it is', function () {
     $task = task('Build');
+    $other = task('Review');
 
     $board = board()->moveUsing(function (Task $record, string $to, string $from) {
-        throw_if($to === 'doing' && $record->title === 'Build', new RuntimeException('Needs a review first.'));
+        throw_if($record->title === 'Review', new MoveRejected('Needs a review first.'));
+        throw_if($record->title === 'Build', new RuntimeException('A bug in the closure.'));
     });
 
-    expect(fn () => $board->move((string) $task->id, 'doing'))->toThrow(MoveRejected::class, 'Needs a review first.');
+    expect(fn () => $board->move((string) $other->id, 'doing'))->toThrow(MoveRejected::class, 'Needs a review first.')
+        ->and(fn () => $board->move((string) $task->id, 'doing'))->toThrow(RuntimeException::class, 'A bug in the closure.')
+        ->and($task->fresh()->status)->toBe('todo')
+        ->and($other->fresh()->status)->toBe('todo');
 
     $moved = [];
     board()->moveUsing(function (Task $record, string $to, string $from) use (&$moved) {

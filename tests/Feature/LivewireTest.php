@@ -1,6 +1,11 @@
 <?php
 
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
+use Packstub\Kanban\Board;
+use Packstub\Kanban\Exceptions\MoveRejected;
+use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
 beforeEach(function () {
@@ -38,6 +43,37 @@ it('answers a refused move with the reason instead of an error', function () {
         ->assertReturned(fn ($result) => $result['ok'] === false && str_contains($result['message'], 'cannot be moved'));
 
     expect($task->fresh()->status)->toBe('doing');
+});
+
+it('keeps an exception thrown while saving out of the notification: reported, answered with a generic message', function () {
+    Exceptions::fake();
+    $task = task('Build');
+    $other = task('Review');
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->moveUsing(function (Task $task, string $to) {
+                throw_if($task->title === 'Review', new MoveRejected('Needs a review first.'));
+
+                // What a database refusal (a check constraint, a strict-mode value) looks like.
+                throw new QueryException('sqlite', 'update "tasks" set "status" = ? where "id" = ?', [$to, $task->id], new RuntimeException('constraint failed'));
+            });
+        }
+    };
+
+    Livewire::test($component::class)
+        ->call('kanbanMove', (string) $task->id, 'doing')
+        ->assertReturned(['ok' => false, 'message' => 'The move did not go through.'])
+        ->call('kanbanMove', (string) $other->id, 'doing')
+        ->assertReturned(['ok' => false, 'message' => 'Needs a review first.']);
+
+    Exceptions::assertReported(fn (QueryException $e) => str_contains($e->getMessage(), 'update "tasks"'));
+    Exceptions::assertReportedCount(1);
+
+    expect($task->fresh()->status)->toBe('todo')
+        ->and($other->fresh()->status)->toBe('todo');
 });
 
 it('never moves into a column this user cannot see', function () {

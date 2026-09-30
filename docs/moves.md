@@ -12,19 +12,21 @@
 
 ## Your own move logic
 
-`moveUsing()` replaces the default save. Throw to refuse the move: the card goes back and the exception's message is shown.
+`moveUsing()` replaces the default save. Throw `MoveRejected` to refuse the move: the card goes back and the message is shown.
 
 ```php
+use Packstub\Kanban\Exceptions\MoveRejected;
+
 ->moveUsing(function (Task $task, string $to, string $from) {
     if ($to === 'done' && $task->openChecks()->exists()) {
-        throw new \RuntimeException('Close the open checks first.');
+        throw new MoveRejected('Close the open checks first.');
     }
 
     $task->update(['status' => $to, 'completed_at' => $to === 'done' ? now() : null]);
 })
 ```
 
-Throw `Packstub\Kanban\Exceptions\MoveRejected` to refuse with a message you want shown as-is; any other exception's message is shown too, or "The move did not go through." when it has none.
+Throw `Packstub\Kanban\Exceptions\MoveRejected` to refuse with a message you want shown as-is. Any other exception (the database's, a bug in the closure) is reported to your exception handler and the user sees "The move did not go through.": an exception's text, a query with its bindings say, belongs in the log, not in a notification. `Board::move()` itself lets such an exception propagate, so a call of your own sees it.
 
 ## Reordering
 
