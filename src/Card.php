@@ -36,6 +36,12 @@ class Card implements Arrayable
 
     protected ?string $search = null;
 
+    /** @var list<array{url: ?string, name: ?string}> */
+    protected array $avatars = [];
+
+    /** @var list<string>|null */
+    protected ?array $actions = null;
+
     public static function make(): static
     {
         return new static;
@@ -106,10 +112,36 @@ class Card implements Arrayable
         return $this;
     }
 
+    /**
+     * A round picture in the card's foot: an assignee, an owner. Without a URL the
+     * initials of the name are drawn. Call it again for more people.
+     */
+    public function avatar(?string $url, ?string $name = null): static
+    {
+        if (filled($url) || filled($name)) {
+            $this->avatars[] = ['url' => $url, 'name' => $name];
+        }
+
+        return $this;
+    }
+
+    /**
+     * The board's card actions this card offers, by name (default: all of them).
+     * The server still checks each action's own rules when it is run.
+     *
+     * @param  list<string>  $names
+     */
+    public function actions(array $names): static
+    {
+        $this->actions = array_values($names);
+
+        return $this;
+    }
+
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        return array_filter([
+        $card = array_filter([
             'eyebrow' => $this->eyebrow,
             'title' => $this->title,
             'aside' => $this->aside,
@@ -118,6 +150,14 @@ class Card implements Arrayable
             'url' => $this->url,
             'accent' => $this->accent,
             'search' => $this->search,
+            'avatars' => $this->avatars,
         ], fn ($v) => $v !== null && $v !== []);
+
+        // An empty list is meaningful here: this card offers no actions.
+        if ($this->actions !== null) {
+            $card['actions'] = $this->actions;
+        }
+
+        return $card;
     }
 }

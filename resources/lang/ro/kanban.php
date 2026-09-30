@@ -18,4 +18,7 @@ return [
     'not_allowed_into' => 'Cardurile nu pot fi mutate de aici în :column.',
     'failed' => 'Mutarea nu a reușit.',
     'offline' => 'Serverul nu a răspuns. Cardul a revenit la locul lui.',
+    'card_menu' => 'Acțiuni card',
+    'limit' => 'Limită: :limit carduri',
+    'full' => ':column este plină (limita :limit).',
 ];

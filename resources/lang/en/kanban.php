@@ -18,4 +18,7 @@ return [
     'not_allowed_into' => 'Cards cannot be moved to :column from here.',
     'failed' => 'The move did not go through.',
     'offline' => 'Could not reach the server. The card is back where it was.',
+    'card_menu' => 'Card actions',
+    'limit' => 'Limit: :limit cards',
+    'full' => ':column is full (limit :limit).',
 ];

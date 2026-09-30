@@ -16,6 +16,7 @@
     x-load-css="[@js(FilamentAsset::getStyleHref('kanban', 'packstub/filament-kanban'))]"
     x-data="packstubKanban(@js($config))"
     x-on:keydown.escape.window="menu = null"
+    x-on:packstub-kanban-refresh.window="refresh(true)"
     class="pk"
     :class="{ 'pk-is-dragging': dragging }"
 >
@@ -78,13 +79,31 @@
                     'pk-col-target': dragging && dragging.from !== column.name && canDrop(dragging.from, column.name),
                     'pk-col-blocked': dragging && dragging.from !== column.name && ! canDrop(dragging.from, column.name),
                     'pk-col-locked': ! column.draggable,
+                    'pk-col-full': isFull(column),
                 }"
                 x-on:click="if (folded[column.name] && ! $event.target.closest('.pk-fold')) toggleFold(column.name)"
             >
                 <header class="pk-col-head" x-on:dblclick="toggleFold(column.name)">
                     <span class="pk-dot" :style="dot(column.color)"></span>
-                    <h3 x-text="column.label"></h3>
-                    <span class="pk-count" x-text="column.count"></span>
+                    <div class="pk-col-title">
+                        <h3 x-text="column.label"></h3>
+                        <span class="pk-summary" x-show="column.summary" x-text="column.summary"></span>
+                    </div>
+                    <span
+                        class="pk-count"
+                        x-text="column.limit !== null ? column.total + '/' + column.limit : column.count"
+                        :title="column.limit !== null ? t.limit.replace(':limit', column.limit) : null"
+                    ></span>
+                    <button
+                        type="button"
+                        class="pk-icon-btn pk-create"
+                        x-show="createAction && column.creatable && ! isFull(column)"
+                        x-on:click.stop="create(column)"
+                        :title="createAction?.label"
+                        :aria-label="createAction?.label"
+                    >
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11"/></svg>
+                    </button>
                     <button type="button" class="pk-icon-btn pk-fold" x-on:click="toggleFold(column.name)" :title="folded[column.name] ? t.expand : t.collapse">
                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m12 5-5 5 5 5"/></svg>
                     </button>
@@ -99,33 +118,48 @@
                             :class="{ 'pk-card-pending': card._pending, 'pk-card-flash': card._flash, 'pk-card-accent': card.accent }"
                             :style="card.accent ? '--pk-card-accent:' + tone(card.accent) : ''"
                         >
-                            <a class="pk-card-link" :href="card.url || null" x-on:click="if (! card.url) $event.preventDefault()" draggable="false">
+                            <a class="pk-card-link" :href="card.url || null" x-on:click="open($event, card)" draggable="false">
                                 <div class="pk-card-top" x-show="card.eyebrow || card.aside">
                                     <span class="pk-eyebrow" x-text="card.eyebrow"></span>
                                     <span class="pk-aside" x-text="card.aside"></span>
                                 </div>
                                 <div class="pk-title" x-show="card.title" x-text="card.title"></div>
-                                <div class="pk-card-foot" x-show="(card.badges && card.badges.length) || (card.meta && card.meta.length)">
+                                <div class="pk-card-foot" x-show="(card.badges && card.badges.length) || (card.meta && card.meta.length) || (card.avatars && card.avatars.length)">
                                     <template x-for="badge in (card.badges || [])" :key="badge.label">
                                         <span class="pk-badge" :style="'--pk-badge:' + tone(badge.color || 'gray')" x-text="badge.label"></span>
                                     </template>
                                     <span class="pk-meta" x-text="(card.meta || []).join(' · ')"></span>
+                                    <span class="pk-avatars" x-show="card.avatars && card.avatars.length">
+                                        <template x-for="(avatar, i) in (card.avatars || [])" :key="i">
+                                            <span class="pk-avatar" :title="avatar.name">
+                                                <template x-if="avatar.url"><img :src="avatar.url" :alt="avatar.name || ''" loading="lazy"></template>
+                                                <template x-if="! avatar.url"><span x-text="initials(avatar.name)"></span></template>
+                                            </span>
+                                        </template>
+                                    </span>
                                 </div>
                             </a>
                             <button
                                 type="button"
                                 class="pk-card-menu"
-                                x-show="column.draggable && targets(column.name).length"
+                                x-show="hasMenu(card, column)"
                                 x-on:click.stop="menu = menu === 'card:' + card.id ? null : 'card:' + card.id"
-                                :aria-label="t.move_to"
+                                :aria-label="t.card_menu"
                                 :aria-expanded="menu === 'card:' + card.id"
-                                :title="t.move_to"
+                                :title="t.card_menu"
                             >
                                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="15" cy="10" r="1.4"/></svg>
                             </button>
                             <div class="pk-menu pk-menu-end pk-card-popover" x-show="menu === 'card:' + card.id" x-cloak x-on:click.outside="menu = null">
-                                <div class="pk-menu-label" x-text="t.move_to"></div>
-                                <template x-for="target in targets(column.name)" :key="target.name">
+                                <template x-for="action in actionsFor(card)" :key="action.name">
+                                    <button type="button" class="pk-menu-item" :class="action.color && 'pk-menu-item-' + action.color" x-on:click="runAction(action.name, card)">
+                                        <span class="pk-menu-icon" x-show="action.icon" x-html="action.icon"></span>
+                                        <span x-text="action.label"></span>
+                                    </button>
+                                </template>
+                                <div class="pk-menu-sep" x-show="actionsFor(card).length && column.draggable && targets(column.name).length"></div>
+                                <div class="pk-menu-label" x-show="column.draggable && targets(column.name).length" x-text="t.move_to"></div>
+                                <template x-for="target in (column.draggable ? targets(column.name) : [])" :key="target.name">
                                     <button type="button" class="pk-menu-item" x-on:click="menu = null; moveTo(card.id, column.name, target.name)">
                                         <span class="pk-dot" :style="dot(target.color)"></span>
                                         <span x-text="target.label"></span>
@@ -140,7 +174,7 @@
                     <span x-text="dragging && canDrop(dragging.from, column.name) ? t.drop_here : (search ? t.no_match : t.empty)"></span>
                 </div>
 
-                <button type="button" class="pk-more" x-show="column.cards.length < column.count && ! folded[column.name]" x-on:click="more(column)" :disabled="loading[column.name]">
+                <button type="button" class="pk-more" :data-column="column.name" x-show="column.cards.length < column.count && ! folded[column.name] && ! search" x-init="observeMore($el, column)" x-on:click="more(column)" :disabled="loading[column.name]">
                     <span x-text="t.more"></span>
                     <span x-text="'(' + (column.count - column.cards.length) + ')'"></span>
                 </button>

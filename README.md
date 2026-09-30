@@ -1,114 +1,225 @@
 # Filament Kanban
 
-A fast, simple Kanban board for Filament v4 and v5.
+<div class="filament-hidden">
 
-- **Instant.** A drop moves the card at once and asks the server afterwards. If the server says no, the card slides back and the reason is shown. The board never re-renders on a move.
-- **Per-user columns.** Show a column only to the people who work in it, and decide who may drop into it or drag out of it.
-- **Drop rules.** Say which columns a card may come from; impossible targets dim while you drag, and the server enforces the same rules.
-- **Focus mode.** The board page hides the panel's sidebar so the columns get the whole width; one button brings the menu back.
-- **Simple cards.** Shape a card in one closure: a reference, a title, an amount, badges and a line of meta. Cards are drawn in the browser from JSON, so hundreds of them stay light.
-- Instant search as you type (refined on the server), select filters, folding and hiding columns (remembered per user), "Move to…" for touch and keyboard, paging per column, dark mode.
+![Filament Kanban: a fast Kanban board for Filament](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/banner.jpg)
 
-## Install
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/packstub/filament-kanban.svg?style=flat-square)](https://packagist.org/packages/packstub/filament-kanban)
+[![Tests](https://img.shields.io/github/actions/workflow/status/packstub/filament-kanban/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/packstub/filament-kanban/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/packstub/filament-kanban.svg?style=flat-square)](https://packagist.org/packages/packstub/filament-kanban)
+[![License](https://img.shields.io/packagist/l/packstub/filament-kanban.svg?style=flat-square)](https://github.com/packstub/filament-kanban/blob/main/LICENSE.md)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/icaliman)
+
+</div>
+
+A fast, simple Kanban board for Filament: a drop lands at once, the server checks every rule, and your Filament actions work on every card.
+
+## Features
+
+- **[Instant drag and drop](#instant-moves)**: a drop moves the card at once and asks the server afterwards. If the server says no, the card slides back and the reason is shown. The board never re-renders on a move.
+- **[Rules on the server](#columns-and-rules)**: per-user columns, drop rules, read-only columns and WIP limits. Impossible targets dim while you drag, and the server enforces the same rules.
+- **[Filament actions on cards](#card-actions)**: edit in a modal or slide-over, delete, or run your own actions from a card's menu; one click opens a card.
+- **[Create in a column](#create-in-a-column)**: a "+" on each column opens your create form with the column already set.
+- **[Columns from an enum](#columns-and-rules)**: one line turns a backed enum into columns, with labels and colours from `HasLabel` and `HasColor`.
+- **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
+- **[Cards in one closure](#cards)**: a reference, a title, an amount, badges, a line of meta and avatars. Cards are drawn in the browser from JSON, so hundreds of them stay light.
+- **[Search and filters](#search-filters-and-paging)**: instant search as you type (refined on the server), select filters, paging per column with infinite scroll.
+- **[Focus mode](#configuration)**: the board page hides the panel's sidebar so the columns get the whole width.
+- **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` Laravel event, a browser event, and optional polling for shared boards.
+- Folding and hiding columns (remembered per user), "Move to…" for touch and keyboards, manual ordering.
+- **Dark mode ready** and **translatable** (English, Romanian, Russian, German).
+
+## Compatibility
+
+| Plugin | Filament | Laravel | PHP |
+| --- | --- | --- | --- |
+| 0.x | 4.x, 5.x | 12.x, 13.x | 8.3+ |
+
+## Installation
 
 ```bash
 composer require packstub/filament-kanban
 php artisan filament:assets
 ```
 
-No config, no migrations. The board uses Filament's bundled SortableJS and ships plain CSS on your panel's palette, so there is nothing to add to your theme.
+No config, no migrations. The board uses the SortableJS that Filament already ships and plain CSS on your panel's palette, so there is nothing to add to your theme.
 
-## A board page
+Add a board page next to a resource (or a standalone `KanbanPage`) and describe the board in one method:
 
 ```php
-use App\Models\Task;
+use App\Enums\DealStage;
+use App\Models\Deal;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
-use Packstub\Kanban\Column;
-use Packstub\Kanban\Filter;
 use Packstub\Kanban\Pages\KanbanResourcePage;
 
-class TaskBoard extends KanbanResourcePage // or Packstub\Kanban\Pages\KanbanPage for a standalone page
+class DealBoard extends KanbanResourcePage
 {
-    protected static string $resource = TaskResource::class;
+    protected static string $resource = DealResource::class;
 
     public function kanban(Board $board): Board
     {
         return $board
-            ->query(fn () => Task::query()->with('project'))
-            ->columnAttribute('status')
-            ->sortBy('due_at')
-            ->searchable(['title', 'project.name'])
-            ->filters([
-                Filter::make('project_id')->options(fn () => Project::pluck('name', 'id')->all()),
-            ])
-            ->columns([
-                Column::make('todo')->label('To do')->color('sky'),
-                Column::make('doing')->color('amber')->accepts(['todo']),
-                Column::make('review')->color('violet')
-                    ->accepts(['doing'])
-                    ->visible(fn () => auth()->user()->isReviewer()),
-                Column::make('done')->color('emerald')
-                    ->accepts(['review'])
-                    ->droppable(fn () => auth()->user()->can('ship'))
-                    ->collapsed()
-                    ->sortBy('updated_at', 'desc'),
-            ])
-            ->card(fn (Task $task) => Card::make()
-                ->eyebrow($task->key)
-                ->title($task->title)
-                ->aside($task->due_at?->format('M j'))
-                ->badge('blocked', 'red', $task->is_blocked)
-                ->meta([$task->project->name, $task->assignee?->name])
-                ->url(TaskResource::getUrl('view', ['record' => $task])));
+            ->query(fn () => Deal::query()->with('owner'))
+            ->columnAttribute('stage')
+            ->columns(DealStage::class)
+            ->card(fn (Deal $deal) => Card::make()
+                ->eyebrow($deal->reference)
+                ->title($deal->company)
+                ->aside(Number::currency($deal->amount, 'USD'))
+                ->meta([$deal->title, $deal->close_at?->format('M j')])
+                ->avatar($deal->owner?->avatar_url, $deal->owner?->name));
     }
 }
 ```
 
-Register it in the resource's `getPages()` like any other page: `'board' => TaskBoard::route('/board')`.
+Register it in the resource's `getPages()`: `'board' => DealBoard::route('/board')`.
 
-## Moves
+Read more: [Installation](https://packstub.dev/docs/filament-kanban/installation), including a board inside any Livewire component.
 
-By default a move sets the column attribute and saves. Give your own logic to `moveUsing()`; throw to refuse the move and the card goes back with the exception's message:
+## Instant moves
+
+![A pipeline board in Filament: six columns with totals, cards with amounts, badges and owners](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/board.png)
+
+A drop moves the card in the browser at once and asks the server with a small renderless call. The server loads the record through the board's `query()` and checks the column rules; your move logic runs; the card flashes when it is saved, or slides back with the reason when it is refused. Give your own logic to `moveUsing()` and throw to refuse:
 
 ```php
-->moveUsing(function (Task $task, string $to, string $from) {
-    if ($to === 'done' && $task->openChecks()->exists()) {
-        throw new \RuntimeException('Close the open checks first.');
+->moveUsing(function (Deal $deal, string $to, string $from) {
+    if ($to === 'won' && ! $deal->contract_signed) {
+        throw new \RuntimeException('Attach the signed contract first.');
     }
 
-    $task->update(['status' => $to]);
+    $deal->update(['stage' => $to]);
 })
 ```
 
-Before your code runs, the server checks the same rules the browser shows: the record is in the board's `query()`, both columns are visible to this user, the source is `draggable`, the target is `droppable` and `accepts` the source. Scope the query (tenant, team, date window) and every read and every move goes through it.
+Scope the query (tenant, team, date window) and every read, move and action goes through it.
 
-To let users order cards inside a column, add `->reorderable('sort')`, with an integer `sort` column. The order of the loaded cards is stored after each drop.
+Read more: [Moves and events](https://packstub.dev/docs/filament-kanban/moves).
 
-## Columns
+## Columns and rules
+
+![Dragging a card: the columns it may go to are highlighted, the others dimmed](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/drag.png)
+
+Build the columns from an enum, or list them. Every rule takes a closure and is evaluated once per request, never per card:
+
+```php
+->columns([
+    Column::make('todo')->label('To do')->color('sky'),
+    Column::make('doing')->color('amber')->accepts(['todo'])->limit(5),
+    Column::make('review')->color('violet')
+        ->accepts(['doing'])
+        ->visible(fn () => auth()->user()->isReviewer()),
+    Column::make('done')->color('emerald')
+        ->accepts(['review'])
+        ->droppable(fn () => auth()->user()->can('ship'))
+        ->collapsed(),
+])
+```
 
 | Method | What it does |
 | --- | --- |
-| `label()`, `color()` | Title and dot colour: a name (`gray`, `sky`, `amber`, `orange`, `violet`, `emerald`, `red`, …) or any CSS colour. |
 | `visible()` / `hidden()` | Leave the column out for this user: its cards are not loaded and nothing moves into or out of it. |
 | `accepts([...])` | The columns a card may come from. `null` (default) means anywhere. |
 | `droppable()`, `draggable()`, `readOnly()` | Who may drop in and drag out. |
-| `collapsed()` | Start folded to a thin strip. Users fold, unfold and hide columns themselves; the browser remembers it. |
-| `sortBy()` | This column's order, overriding the board's. |
+| `limit()` | A WIP limit: `3/5` in the header, and a full column refuses moves and new cards. |
+| `creatable()` | Whether the column offers "+" for the create action. |
+| `collapsed()`, `sortBy()` | Start folded; this column's order. |
 
-Every rule takes a closure and is evaluated once per request, never per card.
+Read more: [Columns](https://packstub.dev/docs/filament-kanban/columns).
+
+## Card actions
+
+![A card's menu with Edit, Mark as hot and Delete above "Move to"](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/card-actions.png)
+
+Your Filament actions work on cards, with their forms, modals, slide-overs and confirmations. The card's record is the action's record, loaded through the board's query, and the board refreshes once an action has run. `cardAction()` picks the one a click on the card runs:
+
+```php
+->cardActions([
+    EditAction::make()->schema(DealResource::fields())->slideOver(),
+    Action::make('hot')->icon(Heroicon::OutlinedFire)->action(fn (Deal $record) => $record->update(['is_hot' => true])),
+    DeleteAction::make(),
+])
+->cardAction('edit')
+```
+
+![Editing a deal in a slide-over, opened by clicking its card](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/edit.png)
+
+Read more: [Actions](https://packstub.dev/docs/filament-kanban/actions).
+
+## Create in a column
+
+![The "New deal" slide-over, opened from the Qualified column](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/create.png)
+
+`createAction()` puts a "+" in each droppable column's header. The form opens, and the new record gets that column:
+
+```php
+->createAction(CreateAction::make()->label('New deal')->schema([...])->slideOver())
+```
+
+Hidden, read-only, full and `creatable(false)` columns get no "+", and the server refuses a create into them.
+
+Read more: [Actions](https://packstub.dev/docs/filament-kanban/actions#create-a-card-in-a-column).
+
+## Summaries and limits
+
+A line under each column title, from the column's query with the current search and filters, refreshed after every move:
+
+```php
+->summarize(fn (Builder $query) => Number::currency($query->sum('amount'), 'USD'))
+```
+
+Read more: [Columns](https://packstub.dev/docs/filament-kanban/columns#summaries).
 
 ## Cards
 
-`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `badge($label, $color, $condition)`, `meta([...])` (empty parts dropped), `accent($color)` (a coloured left edge), `url()` and `searchText()` (extra words the instant search matches).
+`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `badge($label, $color, $condition)`, `meta([...])` (empty parts dropped), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()` and `actions([...])`.
 
-## Board options
+Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 
-`perColumn(50)` cards per column before "Load more", `focusMode(false)` to keep the sidebar, `key()` to name where the browser keeps a user's folded and hidden columns.
+## Search, filters and paging
 
-## Styling
+![Searching the board: the matching cards of every column, with the totals following](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/search.png)
 
-The stylesheet is plain CSS on Filament's colour variables and follows dark mode. Restyle it with the `--pk-*` variables on `.pk` (`--pk-ring`, `--pk-col-width`, `--pk-card-bg`, `--pk-radius`, …) from your theme. The plugin's stylesheet loads after your theme, so prefix your overrides (`.fi-body .pk { … }`).
+```php
+->searchable(['reference', 'company', 'owner.name'])
+->filters([
+    Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
+])
+->perColumn(50)
+```
+
+Typing filters the loaded cards at once, then the server brings the matching cards of every column. Each column loads its cards in pages as you scroll.
+
+Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration#search).
+
+## Configuration
+
+```php
+$board
+    ->reorderable('sort')   // users order cards inside a column
+    ->sortBy('due_at')      // default order (a column can override it)
+    ->poll('30s')           // pick up other people's changes
+    ->focusMode(false)      // keep the panel's sidebar on the board page
+    ->key('deals');         // where the browser remembers folded and hidden columns
+```
+
+![The board in dark mode](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/dark.png)
+
+The stylesheet is plain CSS on Filament's colour variables and follows dark mode. Restyle it with the `--pk-*` variables on `.pk` (`--pk-ring`, `--pk-col-width`, `--pk-card-bg`, `--pk-radius`, …) from your theme, prefixed so they win over the plugin's stylesheet (`.fi-body .pk { … }`).
+
+Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration), the full fluent API.
+
+## Documentation
+
+- [Installation](https://packstub.dev/docs/filament-kanban/installation)
+- [Columns](https://packstub.dev/docs/filament-kanban/columns)
+- [Cards](https://packstub.dev/docs/filament-kanban/cards)
+- [Actions](https://packstub.dev/docs/filament-kanban/actions)
+- [Moves and events](https://packstub.dev/docs/filament-kanban/moves)
+- [Configuration](https://packstub.dev/docs/filament-kanban/configuration)
+
+The same pages live in the [`docs/`](https://github.com/packstub/filament-kanban/tree/main/docs) directory of this repository.
 
 ## Testing
 
@@ -116,6 +227,19 @@ The stylesheet is plain CSS on Filament's colour variables and follows dark mode
 composer test
 ```
 
+## Changelog
+
+See the [changelog](https://github.com/packstub/filament-kanban/blob/main/CHANGELOG.md).
+
+## Security vulnerabilities
+
+Please e-mail [support@packstub.dev](mailto:support@packstub.dev) rather than opening a public issue.
+
+## Credits
+
+- [Ion Caliman](https://github.com/icaliman)
+- [All contributors](https://github.com/packstub/filament-kanban/contributors)
+
 ## License
 
-MIT. See [LICENSE.md](LICENSE.md).
+MIT. See the [license file](https://github.com/packstub/filament-kanban/blob/main/LICENSE.md).

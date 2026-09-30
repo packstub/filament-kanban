@@ -18,4 +18,7 @@ return [
     'not_allowed_into' => 'Karten können von hier nicht nach :column verschoben werden.',
     'failed' => 'Das Verschieben hat nicht geklappt.',
     'offline' => 'Server nicht erreichbar. Die Karte ist wieder an ihrem Platz.',
+    'card_menu' => 'Kartenaktionen',
+    'limit' => 'Limit: :limit Karten',
+    'full' => ':column ist voll (Limit :limit).',
 ];
