@@ -1,0 +1,359 @@
+/*
+ * packstub/filament-kanban — plain CSS on the panel's own palette (--gray-*, --primary-*),
+ * so the board follows the theme and dark mode without compiling the plugin's views.
+ * Override the --pk-* variables on .pk to restyle it.
+ */
+
+.pk {
+    --pk-bg: var(--gray-100);
+    --pk-col-bg: color-mix(in oklab, var(--gray-100) 70%, var(--gray-200));
+    --pk-col-border: transparent;
+    --pk-card-bg: #fff;
+    --pk-card-border: var(--gray-200);
+    --pk-card-hover: var(--gray-400);
+    --pk-text: var(--gray-950);
+    --pk-muted: var(--gray-500);
+    --pk-soft: var(--gray-600);
+    --pk-ring: var(--primary-500);
+    --pk-radius: 0.5rem;
+    --pk-card-radius: 0.375rem;
+    --pk-col-width: 17.5rem;
+    --pk-folded-width: 2.75rem;
+    --pk-gap: 0.75rem;
+    --pk-height: calc(100dvh - var(--topbar-height, 4rem) - 9.5rem);
+    --pk-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    min-width: 0;
+    color: var(--pk-text);
+}
+
+.dark .pk {
+    --pk-col-bg: rgb(255 255 255 / 0.035);
+    --pk-col-border: rgb(255 255 255 / 0.06);
+    --pk-card-bg: var(--gray-900);
+    --pk-card-border: rgb(255 255 255 / 0.08);
+    --pk-card-hover: rgb(255 255 255 / 0.28);
+    --pk-text: #fff;
+    --pk-muted: var(--gray-400);
+    --pk-soft: var(--gray-300);
+}
+
+.pk [x-cloak] { display: none !important; }
+.pk svg { width: 1rem; height: 1rem; flex: none; }
+
+/* ------------------------------------------------------------------ toolbar */
+
+.pk-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pk-spacer { flex: 1; }
+
+.pk-btn, .pk-icon-btn, .pk-filter, .pk-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2.125rem;
+    border: 1px solid var(--pk-card-border);
+    border-radius: var(--pk-card-radius);
+    background: var(--pk-card-bg);
+    color: var(--pk-soft);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1;
+    transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.pk-btn { padding: 0 0.7rem; cursor: pointer; }
+.pk-icon-btn { justify-content: center; width: 2.125rem; padding: 0; cursor: pointer; }
+.pk-btn:hover, .pk-icon-btn:hover { border-color: var(--pk-card-hover); color: var(--pk-text); }
+.pk-btn:focus-visible, .pk-icon-btn:focus-visible, .pk-card-link:focus-visible, .pk-more:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-btn-count { color: var(--pk-muted); font-variant-numeric: tabular-nums; }
+
+.pk-search { padding: 0 0.6rem; min-width: min(20rem, 100%); color: var(--pk-muted); }
+.pk-search:focus-within { border-color: var(--pk-ring); box-shadow: 0 0 0 1px var(--pk-ring); }
+.pk-search input { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--pk-text); font-size: 0.8125rem; outline: none; box-shadow: none; }
+.pk-search input::-webkit-search-cancel-button { cursor: pointer; }
+.pk-search kbd { font: 500 0.6875rem/1 var(--pk-mono); padding: 0.15rem 0.35rem; border: 1px solid var(--pk-card-border); border-radius: 0.25rem; color: var(--pk-muted); }
+
+.pk-filter { position: relative; padding: 0 0.6rem; cursor: pointer; }
+.pk-filter span { color: var(--pk-muted); }
+.pk-filter select { appearance: none; border: 0; padding: 0 1rem 0 0; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2371717a' stroke-width='1.5'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E") no-repeat right center / 0.875rem; color: var(--pk-text); font: inherit; cursor: pointer; outline: none; box-shadow: none; }
+.dark .pk-filter select option { background: var(--gray-900); }
+.pk-filter-on { border-color: var(--pk-ring); }
+
+/* ------------------------------------------------------------------ menus */
+
+.pk-menu-wrap { position: relative; }
+
+.pk-menu {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 0.375rem);
+    min-width: 14rem;
+    padding: 0.3rem;
+    border: 1px solid var(--pk-card-border);
+    border-radius: var(--pk-radius);
+    background: var(--pk-card-bg);
+    box-shadow: 0 10px 30px -10px rgb(0 0 0 / 0.25);
+}
+
+.pk-menu-end { right: 0; }
+.pk-menu-label { padding: 0.35rem 0.5rem 0.25rem; font: 500 0.6875rem/1.2 var(--pk-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--pk-muted); }
+
+.pk-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    padding: 0.45rem 0.5rem;
+    border-radius: 0.3rem;
+    font-size: 0.8125rem;
+    text-align: start;
+    color: var(--pk-text);
+    cursor: pointer;
+}
+
+.pk-menu-item:hover { background: var(--gray-100); }
+.dark .pk-menu-item:hover { background: rgb(255 255 255 / 0.06); }
+.pk-menu-item input { accent-color: var(--pk-ring); }
+.pk-menu-count { margin-inline-start: auto; color: var(--pk-muted); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ board and columns */
+
+.pk-board {
+    display: flex;
+    align-items: stretch;
+    gap: var(--pk-gap);
+    height: var(--pk-height);
+    min-height: 22rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.25rem;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+}
+
+.pk-col {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 var(--pk-col-width);
+    min-height: 0;
+    border: 1px solid var(--pk-col-border);
+    border-radius: var(--pk-radius);
+    background: var(--pk-col-bg);
+    scroll-snap-align: start;
+    transition: opacity 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.pk-col-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.5rem 0.55rem 0.85rem;
+    user-select: none;
+}
+
+.pk-col-head h3 {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--pk-text);
+}
+
+.pk-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 999px; }
+
+.pk-count {
+    color: var(--pk-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.pk-fold {
+    width: 1.625rem;
+    height: 1.625rem;
+    margin-inline-start: auto;
+    border-color: transparent;
+    background: transparent;
+    color: var(--pk-muted);
+    opacity: 0;
+}
+
+.pk-col:hover .pk-fold, .pk-fold:focus-visible { opacity: 1; }
+
+.pk-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    min-height: 3rem;
+    margin: 0;
+    padding: 0.125rem 0.5rem 0.5rem;
+    list-style: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pk-card-border) transparent;
+}
+
+.pk-col-empty {
+    position: absolute;
+    inset: 2.75rem 0.5rem auto;
+    display: grid;
+    place-items: center;
+    height: 4.5rem;
+    border: 1px dashed var(--pk-card-border);
+    border-radius: var(--pk-card-radius);
+    color: var(--pk-muted);
+    font-size: 0.75rem;
+    pointer-events: none;
+}
+
+.pk-more {
+    margin: 0 0.5rem 0.5rem;
+    padding: 0.4rem;
+    border-radius: var(--pk-card-radius);
+    color: var(--pk-soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.pk-more:hover { background: rgb(0 0 0 / 0.04); color: var(--pk-text); }
+.dark .pk-more:hover { background: rgb(255 255 255 / 0.05); }
+.pk-more span + span { color: var(--pk-muted); margin-inline-start: 0.25rem; }
+
+/* folded: a thin vertical strip with the name and the count */
+.pk-col-folded { flex-basis: var(--pk-folded-width); cursor: pointer; }
+.pk-col-folded .pk-cards, .pk-col-folded .pk-col-empty, .pk-col-folded .pk-more { display: none; }
+.pk-col-folded .pk-col-head { flex-direction: column; gap: 0.6rem; height: 100%; padding: 0.75rem 0; }
+.pk-col-folded .pk-col-head h3 { writing-mode: vertical-rl; }
+.pk-col-folded .pk-fold { order: -1; margin: 0; opacity: 1; transform: rotate(180deg); }
+
+/* while dragging: where the card may go, and where it may not */
+.pk-is-dragging .pk-col-target { box-shadow: inset 0 0 0 1.5px var(--pk-ring); background: color-mix(in oklab, var(--pk-col-bg) 88%, var(--pk-ring)); }
+.pk-is-dragging .pk-col-blocked { opacity: 0.45; }
+.pk-is-dragging .pk-col-folded.pk-col-target .pk-cards { display: flex; position: absolute; inset: 0; opacity: 0; }
+
+/* ------------------------------------------------------------------ cards */
+
+.pk-card {
+    position: relative;
+    flex: none;
+    border: 1px solid var(--pk-card-border);
+    border-radius: var(--pk-card-radius);
+    background: var(--pk-card-bg);
+    box-shadow: 0 1px 1px rgb(0 0 0 / 0.03);
+    cursor: grab;
+    transition: border-color 0.12s, box-shadow 0.12s, opacity 0.15s;
+}
+
+.pk-card:hover { border-color: var(--pk-card-hover); }
+.pk-col-locked .pk-card { cursor: default; }
+
+.pk-card-accent::before {
+    content: "";
+    position: absolute;
+    inset: -1px auto -1px -1px;
+    width: 3px;
+    border-radius: var(--pk-card-radius) 0 0 var(--pk-card-radius);
+    background: var(--pk-card-accent);
+}
+
+.pk-card-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.6rem 0.7rem 0.65rem;
+    color: inherit;
+    text-decoration: none;
+    border-radius: inherit;
+    -webkit-user-drag: none;
+}
+
+.pk-card-top { display: flex; align-items: baseline; gap: 0.5rem; padding-inline-end: 1.25rem; }
+.pk-eyebrow { font: 500 0.6875rem/1.2 var(--pk-mono); letter-spacing: 0.02em; color: var(--pk-muted); }
+.pk-aside { margin-inline-start: auto; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pk-text); white-space: nowrap; }
+.pk-title { font-size: 0.8125rem; font-weight: 500; line-height: 1.3; color: var(--pk-text); overflow-wrap: anywhere; }
+
+.pk-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
+.pk-meta { min-width: 0; overflow: hidden; font-size: 0.72rem; color: var(--pk-muted); white-space: nowrap; text-overflow: ellipsis; }
+
+.pk-badge {
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+    background: color-mix(in oklab, var(--pk-badge) 14%, transparent);
+    color: color-mix(in oklab, var(--pk-badge) 78%, var(--pk-text));
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.pk-card-menu {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.3rem;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    color: var(--pk-muted);
+    background: var(--pk-card-bg);
+    cursor: pointer;
+    opacity: 0;
+}
+
+.pk-card:hover .pk-card-menu, .pk-card-menu:focus-visible, .pk-card-menu[aria-expanded="true"] { opacity: 1; }
+.pk-card-menu:hover { color: var(--pk-text); background: var(--gray-100); }
+.dark .pk-card-menu:hover { background: rgb(255 255 255 / 0.08); }
+@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold { opacity: 1; } }
+
+/* "Move to" opens inside the card, so the column's scroll never clips it */
+.pk-card-popover { position: static; min-width: 0; margin: 0 0.4rem 0.4rem; box-shadow: none; }
+
+.pk-card-pending { opacity: 0.6; cursor: progress; }
+.pk-card-flash { animation: pk-flash 0.9s ease-out; }
+@keyframes pk-flash { from { box-shadow: 0 0 0 2px var(--pk-ring); } to { box-shadow: 0 0 0 2px transparent; } }
+
+/* SortableJS states */
+.pk-ghost { opacity: 0.35; border-style: dashed; box-shadow: none; }
+.pk-ghost > * { visibility: hidden; }
+.pk-chosen { border-color: var(--pk-ring); }
+.pk-drag { cursor: grabbing; transform: rotate(1.5deg); box-shadow: 0 12px 28px -8px rgb(0 0 0 / 0.3); opacity: 1 !important; }
+.sortable-fallback.pk-card { cursor: grabbing; }
+
+@media (prefers-reduced-motion: reduce) {
+    .pk-card-flash { animation: none; }
+    .pk-drag { transform: none; }
+}
+
+/* ------------------------------------------------------------------ focus mode (no sidebar) */
+
+@media (min-width: 64rem) {
+    body.pk-focus:not(.pk-focus-sidebar) .fi-sidebar,
+    body.pk-focus:not(.pk-focus-sidebar) .fi-topbar-open-sidebar-btn,
+    body.pk-focus:not(.pk-focus-sidebar) .fi-topbar-close-sidebar-btn,
+    body.pk-focus:not(.pk-focus-sidebar) .fi-topbar-collapse-sidebar-btn-ctn,
+    body.pk-focus:not(.pk-focus-sidebar) .fi-layout-sidebar-toggle-btn-ctn { display: none !important; }
+    body.pk-focus .fi-main { padding-inline: 1.5rem; }
+}
+
+@media (max-width: 63.999rem) {
+    .pk-sidebar-btn { display: none; }
+    .pk { --pk-col-width: min(85vw, 18rem); --pk-height: calc(100dvh - var(--topbar-height, 4rem) - 11rem); }
+}
+
+.pk-page .fi-header { gap: 0.75rem; }

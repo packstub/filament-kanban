@@ -1,0 +1,82 @@
+{
+    "name": "packstub/filament-kanban",
+    "description": "A fast, simple Kanban board for Filament: optimistic drag and drop, per-user columns and drop rules, a focus mode without the sidebar, and cards shaped in one closure.",
+    "keywords": [
+        "packstub",
+        "laravel",
+        "filament",
+        "filament-plugin",
+        "filament-v5",
+        "filament-kanban",
+        "kanban",
+        "kanban-board",
+        "drag-and-drop",
+        "pipeline",
+        "livewire"
+    ],
+    "homepage": "https://github.com/packstub/filament-kanban",
+    "support": {
+        "issues": "https://github.com/packstub/filament-kanban/issues",
+        "source": "https://github.com/packstub/filament-kanban",
+        "docs": "https://packstub.dev/docs/filament-kanban"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ion Caliman",
+            "email": "icaliman92@gmail.com",
+            "role": "Developer"
+        },
+        {
+            "name": "Packstub",
+            "email": "support@packstub.dev",
+            "homepage": "https://packstub.dev"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "filament/filament": "^4.0 || ^5.0",
+        "illuminate/contracts": "^12.0 || ^13.0",
+        "spatie/laravel-package-tools": "^1.92"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.27",
+        "orchestra/testbench": "^10.0 || ^11.0",
+        "pestphp/pest": "^4.0 || ^5.0",
+        "pestphp/pest-plugin-livewire": "^4.0 || ^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Packstub\\Kanban\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Packstub\\Kanban\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:filter": "pest --filter",
+        "lint": "vendor/bin/pint",
+        "lint:test": "vendor/bin/pint --test"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Packstub\\Kanban\\KanbanServiceProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "0.x-dev"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

@@ -1,0 +1,21 @@
+<?php
+
+return [
+    'search' => 'Search',
+    'all' => 'All',
+    'columns' => 'Columns',
+    'show_sidebar' => 'Show menu',
+    'hide_sidebar' => 'Hide menu',
+    'collapse' => 'Fold column',
+    'expand' => 'Unfold column',
+    'move_to' => 'Move to',
+    'more' => 'Load more',
+    'empty' => 'Nothing here',
+    'drop_here' => 'Drop here',
+    'no_match' => 'No cards match',
+    'missing' => 'This card is no longer on the board. Refresh to see the latest.',
+    'not_allowed' => 'You cannot move this card.',
+    'not_allowed_into' => 'Cards cannot be moved to :column from here.',
+    'failed' => 'The move did not go through.',
+    'offline' => 'Could not reach the server. The card is back where it was.',
+];

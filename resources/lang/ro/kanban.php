@@ -1,0 +1,21 @@
+<?php
+
+return [
+    'search' => 'Caută',
+    'all' => 'Toate',
+    'columns' => 'Coloane',
+    'show_sidebar' => 'Arată meniul',
+    'hide_sidebar' => 'Ascunde meniul',
+    'collapse' => 'Restrânge coloana',
+    'expand' => 'Extinde coloana',
+    'move_to' => 'Mută în',
+    'more' => 'Încarcă mai multe',
+    'empty' => 'Nimic aici',
+    'drop_here' => 'Lasă aici',
+    'no_match' => 'Niciun card nu se potrivește',
+    'missing' => 'Cardul nu mai este pe tablă. Reîncarcă pagina pentru ultima versiune.',
+    'not_allowed' => 'Nu poți muta acest card.',
+    'not_allowed_into' => 'Cardurile nu pot fi mutate de aici în :column.',
+    'failed' => 'Mutarea nu a reușit.',
+    'offline' => 'Serverul nu a răspuns. Cardul a revenit la locul lui.',
+];

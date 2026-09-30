@@ -1,0 +1,21 @@
+<?php
+
+return [
+    'search' => 'Suchen',
+    'all' => 'Alle',
+    'columns' => 'Spalten',
+    'show_sidebar' => 'Menü einblenden',
+    'hide_sidebar' => 'Menü ausblenden',
+    'collapse' => 'Spalte einklappen',
+    'expand' => 'Spalte ausklappen',
+    'move_to' => 'Verschieben nach',
+    'more' => 'Mehr laden',
+    'empty' => 'Nichts hier',
+    'drop_here' => 'Hier ablegen',
+    'no_match' => 'Keine passenden Karten',
+    'missing' => 'Diese Karte ist nicht mehr auf dem Board. Neu laden, um den aktuellen Stand zu sehen.',
+    'not_allowed' => 'Du kannst diese Karte nicht verschieben.',
+    'not_allowed_into' => 'Karten können von hier nicht nach :column verschoben werden.',
+    'failed' => 'Das Verschieben hat nicht geklappt.',
+    'offline' => 'Server nicht erreichbar. Die Karte ist wieder an ihrem Platz.',
+];
