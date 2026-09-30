@@ -13,6 +13,8 @@ use Packstub\Kanban\Exceptions\MoveRejected;
  */
 trait InteractsWithKanban
 {
+    use KanbanActions;
+
     protected ?Board $kanbanBoard = null;
 
     abstract public function kanban(Board $board): Board;
@@ -44,20 +46,29 @@ trait InteractsWithKanban
 
     /**
      * @param  list<string>|null  $order
-     * @return array{ok: bool, card?: array<string, mixed>, message?: string}
+     * @param  array<string, mixed>  $filters  the board's current ones, for the column summaries
+     * @return array{ok: bool, card?: array<string, mixed>, summaries?: array<string, string|null>, message?: string}
      */
     #[Renderless]
-    public function kanbanMove(string $id, string $to, ?array $order = null): array
+    public function kanbanMove(string $id, string $to, ?array $order = null, string $search = '', array $filters = []): array
     {
+        $board = $this->getKanban();
+        $from = $board->findRecord($id)?->getAttribute($board->getColumnAttribute());
+        $from = $from instanceof \BackedEnum ? $from->value : $from;
+
         try {
-            $card = $this->getKanban()->move($id, $to, $order);
+            $card = $board->move($id, $to, $order);
         } catch (MoveRejected $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
         }
 
         $this->kanbanMoved($id, $to, $card);
 
-        return ['ok' => true, 'card' => $card];
+        return [
+            'ok' => true,
+            'card' => $card,
+            'summaries' => $board->getSummaries(array_filter([(string) $from, $to]), $search, $filters),
+        ];
     }
 
     /**
@@ -80,6 +91,15 @@ trait InteractsWithKanban
             'searchable' => $board->isSearchable(),
             'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
             'focus' => $board->hasFocusMode(),
+            'poll' => $board->getPoll(),
+            'cardActions' => array_map(fn ($action) => [
+                'name' => $action->getName(),
+                'label' => $action->getLabel(),
+                'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
+                'color' => is_string($color = $action->getColor()) ? $color : null,
+            ], $board->getCardActions()),
+            'cardAction' => $board->getCardAction(),
+            'createAction' => ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
             'i18n' => __('packstub-kanban::kanban'),
         ];
     }

@@ -2,6 +2,21 @@
 
 All notable changes to `packstub/filament-kanban` are documented in this file.
 
+## Unreleased
+
+- Card actions: any Filament action (`EditAction`, `DeleteAction`, your own) in each card's menu, on the card's record, resolved through the board's query. `cardAction('edit')` runs one when the card is clicked, in a modal or a slide-over; `Card::actions([...])` narrows the list per card. The board refreshes after an action.
+- Create in a column: `createAction(CreateAction::make()->schema([...]))` puts a "+" on every droppable column and sets the column attribute on the new record. `Column::creatable(false)` leaves a column out; the server refuses hidden, read-only and full columns.
+- Enum columns: `columns(Status::class)` or `Column::fromEnum()` makes one column per case, with labels and colours from `HasLabel` and `HasColor`.
+- WIP limits: `Column::limit(5)` shows `3/5` in the header and refuses moves and new cards once the column is full, on the server as well.
+- Column summaries: `summarize(fn (Builder $query) => ...)` puts a line (a sum, an average) under each column title, kept current after every move.
+- Polling: `poll('10s')` picks up other people's changes while nobody is dragging.
+- `CardMoved` event (`Packstub\Kanban\Events\CardMoved`) after a card changes column, and a `kanban-card-moved` browser event.
+- `Card::avatar($url, $name)`: owners and assignees in the card's foot, initials when there is no picture.
+- "Load more" loads by itself when it scrolls into view.
+- The instant search also matches the names on a card's avatars.
+- Fixed: Alpine no longer evaluates the dragged card's copy (Sortable's ghost), which logged "card is not defined" errors on every drag.
+- Fixed: the dragged card keeps its background, fonts and dark-mode colours (the ghost lives outside the board).
+
 ## 0.1.0 - 2026-09-30
 
 First public preview. The API may still change before 1.0.

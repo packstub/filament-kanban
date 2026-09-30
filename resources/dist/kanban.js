@@ -24,6 +24,8 @@ export default function packstubKanban(config) {
     return {
         columns: config.columns,
         filters: config.filters,
+        cardActions: config.cardActions || [],
+        createAction: config.createAction,
         t: config.i18n,
         search: '',
         active: Object.fromEntries(config.filters.map((f) => [f.name, ''])),
@@ -35,6 +37,7 @@ export default function packstubKanban(config) {
         sidebar: false,
         refreshTimer: null,
         refreshSeq: 0,
+        pending: 0,
 
         init() {
             this.restore()
@@ -62,12 +65,24 @@ export default function packstubKanban(config) {
             }
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
+
+            // Pick up other people's changes, but never while a card is in the air.
+            if (config.poll) {
+                this.poller = setInterval(() => {
+                    if (! document.hidden && ! this.dragging && ! this.pending && ! this.menu) {
+                        this.refresh()
+                    }
+                }, config.poll)
+            }
         },
 
         destroy() {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
+            clearInterval(this.poller)
+            this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
+            delete document.body._x_ignoreMutationObserver
         },
 
         /* ------------------------------------------------------------ drag and drop */
@@ -103,10 +118,16 @@ export default function packstubKanban(config) {
                 scrollSensitivity: 90,
                 scrollSpeed: 18,
                 onStart: (event) => {
+                    // Sortable's ghost is a copy of the card appended to <body>; while a card is
+                    // in the air, Alpine must not initialize that copy outside the board's scope.
+                    document.body._x_ignoreMutationObserver = true
                     this.menu = null
                     this.dragging = { from: event.from.dataset.column, id: event.item.dataset.id }
                 },
-                onEnd: (event) => this.dropped(event),
+                onEnd: (event) => {
+                    delete document.body._x_ignoreMutationObserver
+                    this.dropped(event)
+                },
             })
         },
 
@@ -147,30 +168,41 @@ export default function packstubKanban(config) {
             const [card] = source.cards.splice(at, 1)
             target.cards.splice(Math.min(index, target.cards.length), 0, card)
 
-            if (from !== to) {
-                source.count--
-                target.count++
+            const shift = (by) => {
+                if (from === to) return
+                source.count -= by
+                target.count += by
+                if (source.total !== null) source.total -= by
+                if (target.total !== null) target.total += by
             }
 
+            shift(1)
             card._pending = true
+            this.pending++
             const order = config.reorderable ? target.cards.map((c) => c.id) : null
 
             const undo = (message) => {
                 const now = target.cards.findIndex((c) => c.id === id)
                 if (now >= 0) target.cards.splice(now, 1)
                 source.cards.splice(Math.min(at, source.cards.length), 0, card)
-                if (from !== to) {
-                    source.count++
-                    target.count--
-                }
+                shift(-1)
                 card._pending = false
                 this.notify(message, 'danger')
             }
 
-            this.$wire.kanbanMove(id, to, order)
+            this.$wire.kanbanMove(id, to, order, this.search, this.active)
                 .then((result) => {
                     if (! result?.ok) {
                         return undo(result?.message || this.t.failed)
+                    }
+
+                    for (const [name, summary] of Object.entries(result.summaries || {})) {
+                        const column = this.findColumn(name)
+                        if (column) column.summary = summary
+                    }
+
+                    if (from !== to) {
+                        this.$dispatch('kanban-card-moved', { id, from, to, card: result.card })
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)
@@ -183,6 +215,7 @@ export default function packstubKanban(config) {
                     }
                 })
                 .catch(() => undo(this.t.offline))
+                .finally(() => this.pending--)
         },
 
         canDrop(from, to) {
@@ -193,8 +226,42 @@ export default function packstubKanban(config) {
             const source = this.findColumn(from)
             const target = this.findColumn(to)
 
-            return !! (source && target && source.draggable && target.droppable
+            return !! (source && target && source.draggable && target.droppable && ! this.isFull(target)
                 && (target.accepts === null || target.accepts.includes(from)))
+        },
+
+        isFull(column) {
+            return column.limit !== null && column.limit !== undefined && column.total >= column.limit
+        },
+
+        /* ------------------------------------------------------------ Filament actions */
+
+        actionsFor(card) {
+            return this.cardActions.filter((a) => ! card.actions || card.actions.includes(a.name))
+        },
+
+        hasMenu(card, column) {
+            return this.actionsFor(card).length > 0 || (column.draggable && this.targets(column.name).length > 0)
+        },
+
+        runAction(name, card) {
+            this.menu = null
+            this.$wire.mountAction(name, { kanbanRecord: card.id })
+        },
+
+        open(event, card) {
+            if (config.cardAction && this.actionsFor(card).some((a) => a.name === config.cardAction)) {
+                // A modified click still opens the url in a new tab.
+                if (card.url && (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)) return
+                event.preventDefault()
+                return this.runAction(config.cardAction, card)
+            }
+
+            if (! card.url) event.preventDefault()
+        },
+
+        create(column) {
+            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name })
         },
 
         targets(from) {
@@ -214,7 +281,7 @@ export default function packstubKanban(config) {
             let text = TEXT.get(raw)
 
             if (text === undefined) {
-                text = [card.eyebrow, card.title, card.aside, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), card.search]
+                text = [card.eyebrow, card.title, card.aside, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
                     .filter(Boolean).join(' ').toLowerCase()
                 TEXT.set(raw, text)
             }
@@ -245,13 +312,27 @@ export default function packstubKanban(config) {
                     if (column) {
                         column.cards = fresh.cards
                         column.count = fresh.count
+                        column.total = fresh.total
+                        column.summary = fresh.summary
                     }
                 }
             })
         },
 
+        // "Load more" loads itself when it scrolls into view; the button stays for keyboards.
+        observeMore(el, column) {
+            if (! window.IntersectionObserver) return
+            this.moreObserver ??= new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting && entry.target.offsetParent) entry.target._more?.()
+                }
+            }, { rootMargin: '0px 0px 200px 0px' })
+            el._more = () => this.more(column)
+            this.moreObserver.observe(el)
+        },
+
         more(column) {
-            if (this.loading[column.name]) {
+            if (this.loading[column.name] || column.cards.length >= column.count) {
                 return
             }
 
@@ -317,6 +398,10 @@ export default function packstubKanban(config) {
 
         dot(color) {
             return 'background:' + this.tone(color)
+        },
+
+        initials(name) {
+            return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
         },
 
         notify(message, status) {

@@ -2,12 +2,15 @@
 
 namespace Packstub\Kanban;
 
+use BackedEnum;
 use Closure;
+use Filament\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Conditionable;
+use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 
 /**
@@ -47,8 +50,22 @@ class Board
 
     protected ?string $key = null;
 
+    /** @var list<Action> */
+    protected array $cardActions = [];
+
+    protected ?string $cardAction = null;
+
+    protected ?Action $createAction = null;
+
+    protected ?Closure $summarize = null;
+
+    protected ?int $poll = null;
+
     /** @var list<Column>|null */
     protected ?array $resolvedColumns = null;
+
+    /** @var array<string, Model|null> */
+    protected array $records = [];
 
     public static function make(): static
     {
@@ -73,10 +90,15 @@ class Board
         return $this;
     }
 
-    /** @param  list<Column>|Closure  $columns */
-    public function columns(array|Closure $columns): static
+    /**
+     * The columns, in order. Pass a backed enum's class to get one column per case
+     * (see Column::fromEnum() to adjust them).
+     *
+     * @param  list<Column>|Closure|class-string<BackedEnum>  $columns
+     */
+    public function columns(array|Closure|string $columns): static
     {
-        $this->columns = $columns;
+        $this->columns = is_string($columns) ? Column::fromEnum($columns) : $columns;
         $this->resolvedColumns = null;
 
         return $this;
@@ -150,6 +172,69 @@ class Board
         return $this;
     }
 
+    /**
+     * Filament actions offered in each card's menu (edit, view, delete, your own…).
+     * The card's record is the action's record, resolved through the board's query.
+     *
+     * @param  list<Action>  $actions
+     */
+    public function cardActions(array $actions): static
+    {
+        $this->cardActions = array_values($actions);
+
+        return $this;
+    }
+
+    /** The card action a click on the card runs (a modal or a slide-over), instead of following its url. */
+    public function cardAction(?string $name): static
+    {
+        $this->cardAction = $name;
+
+        return $this;
+    }
+
+    /**
+     * A create action (Filament's CreateAction, with your form) behind a "+" on each
+     * column. The new record gets that column: the column attribute is set in the data.
+     */
+    public function createAction(?Action $action): static
+    {
+        $this->createAction = $action;
+
+        return $this;
+    }
+
+    /**
+     * A line under each column's title: a sum, an average… The query is the column's
+     * cards with the current search and filters; return a string (or null for nothing).
+     *
+     * @param  Closure(Builder $query, Column $column): (string|int|float|null)  $callback
+     */
+    public function summarize(?Closure $callback): static
+    {
+        $this->summarize = $callback;
+
+        return $this;
+    }
+
+    /** Refresh the board from the server every so often (`'10s'`, `'1m'` or milliseconds), while nobody is dragging. */
+    public function poll(string|int|null $interval = '10s'): static
+    {
+        if ($interval === null) {
+            $this->poll = null;
+        } elseif (is_int($interval)) {
+            $this->poll = max(1000, $interval);
+        } else {
+            preg_match('/^(\d+)\s*(ms|s|m)?$/', trim($interval), $m)
+                ?: throw new \InvalidArgumentException("Cannot read the poll interval [{$interval}]: use '10s', '1m' or milliseconds.");
+            $this->poll = max(1000, (int) $m[1] * match ($m[2] ?? 'ms') {
+                's' => 1000, 'm' => 60000, default => 1
+            });
+        }
+
+        return $this;
+    }
+
     /** Where the browser remembers folded and hidden columns; defaults to the page's class. */
     public function key(string $key): static
     {
@@ -211,6 +296,104 @@ class Board
         return $this->perColumn;
     }
 
+    public function getColumnAttribute(): string
+    {
+        return $this->columnAttribute;
+    }
+
+    /** @return list<Action> */
+    public function getCardActions(): array
+    {
+        return $this->cardActions;
+    }
+
+    public function getCardAction(): ?string
+    {
+        return $this->cardAction;
+    }
+
+    public function getCreateAction(): ?Action
+    {
+        return $this->createAction;
+    }
+
+    public function getPoll(): ?int
+    {
+        return $this->poll;
+    }
+
+    /** @return class-string<Model> */
+    public function getModel(): string
+    {
+        return $this->baseQueryWithoutColumns()->getModel()::class;
+    }
+
+    /** The record behind a card, if it is still on this board for this user. */
+    public function findRecord(string|int|null $id): ?Model
+    {
+        if (blank($id)) {
+            return null;
+        }
+
+        return array_key_exists($key = (string) $id, $this->records)
+            ? $this->records[$key]
+            : $this->records[$key] = $this->baseQuery()->whereKey($key)->first();
+    }
+
+    /** Whether a new card may be created in this column now: visible, droppable, creatable and not full. */
+    public function canCreateIn(?string $columnName): bool
+    {
+        $column = $columnName === null ? null : $this->getColumn($columnName);
+
+        return $column !== null
+            && $this->createAction !== null
+            && $column->isDroppable()
+            && $column->isCreatable()
+            && ! $this->isFull($column);
+    }
+
+    public function isFull(Column $column): bool
+    {
+        $limit = $column->getLimit();
+
+        return $limit !== null && $this->columnQuery($column->getName())->count() >= $limit;
+    }
+
+    /** @param  array<string, mixed>  $filters */
+    public function getSummary(string $columnName, string $search = '', array $filters = []): ?string
+    {
+        $column = $this->getColumn($columnName);
+
+        if (! $this->summarize || ! $column) {
+            return null;
+        }
+
+        $summary = app()->call($this->summarize, [
+            'query' => $this->filteredQuery($search, $filters)->where($this->qualifiedColumnAttribute(), $columnName),
+            'column' => $column,
+        ]);
+
+        return blank($summary) ? null : (string) $summary;
+    }
+
+    /**
+     * @param  list<string>  $columnNames
+     * @param  array<string, mixed>  $filters
+     * @return array<string, string|null>
+     */
+    public function getSummaries(array $columnNames, string $search = '', array $filters = []): array
+    {
+        if (! $this->summarize) {
+            return [];
+        }
+
+        return collect($columnNames)
+            ->unique()
+            ->filter(fn (string $name) => $this->getColumn($name) !== null)
+            ->mapWithKeys(fn (string $name) => [$name => $this->getSummary($name, $search, $filters)])
+            ->all();
+    }
+
     /**
      * Everything the browser needs to draw the board.
      *
@@ -230,6 +413,10 @@ class Board
             'droppable' => $column->isDroppable(),
             'draggable' => $column->isDraggable(),
             'accepts' => $column->getAccepts(),
+            'limit' => $column->getLimit(),
+            'total' => $column->getLimit() === null ? null : $this->columnQuery($column->getName())->count(),
+            'creatable' => $this->createAction !== null && $column->isDroppable() && $column->isCreatable(),
+            'summary' => $this->getSummary($column->getName(), $search, $filters),
             'count' => $counts[$column->getName()] ?? 0,
             'cards' => $this->getCards($column->getName(), $search, $filters),
         ], $columns);
@@ -284,7 +471,7 @@ class Board
      */
     public function move(string $id, string $to, ?array $order = null): array
     {
-        $record = $this->baseQuery()->whereKey($id)->first()
+        $record = $this->findRecord($id)
             ?? throw new MoveRejected(__('packstub-kanban::kanban.missing'));
 
         $from = $this->columnValue($record);
@@ -300,6 +487,10 @@ class Board
                 throw new MoveRejected(__('packstub-kanban::kanban.not_allowed_into', ['column' => $target->getLabel()]));
             }
 
+            if ($this->isFull($target)) {
+                throw new MoveRejected(__('packstub-kanban::kanban.full', ['column' => $target->getLabel(), 'limit' => $target->getLimit()]));
+            }
+
             try {
                 if ($this->moveUsing) {
                     ($this->moveUsing)($record, $to, $from);
@@ -311,6 +502,8 @@ class Board
             } catch (\Throwable $e) {
                 throw new MoveRejected($e->getMessage() ?: __('packstub-kanban::kanban.failed'), previous: $e);
             }
+
+            CardMoved::dispatch($record, $from, $to, $this->key);
         } elseif (! $this->isReorderable() || ! $source->isDraggable()) {
             return $this->presentCard($record);
         }
@@ -318,6 +511,8 @@ class Board
         if ($this->isReorderable() && $order !== null) {
             $this->storeOrder($to, $order);
         }
+
+        unset($this->records[(string) $id]);
 
         return $this->presentCard($record->fresh() ?? $record);
     }
@@ -336,6 +531,14 @@ class Board
             $this->qualifiedColumnAttribute($query),
             array_map(fn (Column $c) => $c->getName(), $this->getColumns()),
         );
+    }
+
+    /** One column's cards, unfiltered: what a WIP limit counts. */
+    public function columnQuery(string $columnName): Builder
+    {
+        $query = $this->baseQuery();
+
+        return $query->where($this->qualifiedColumnAttribute($query), $columnName);
     }
 
     /** @param  array<string, mixed>  $filters */
@@ -422,7 +625,7 @@ class Board
     {
         $value = $record->getAttribute($this->columnAttribute);
 
-        return (string) ($value instanceof \BackedEnum ? $value->value : $value);
+        return (string) ($value instanceof BackedEnum ? $value->value : $value);
     }
 
     protected function qualifiedColumnAttribute(Builder|Relation|null $query = null): string

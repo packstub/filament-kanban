@@ -2,7 +2,10 @@
 
 namespace Packstub\Kanban;
 
+use BackedEnum;
 use Closure;
+use Filament\Support\Contracts\HasColor;
+use Filament\Support\Contracts\HasLabel;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Traits\Conditionable;
 
@@ -27,6 +30,10 @@ class Column
 
     protected bool|Closure $collapsed = false;
 
+    protected bool|Closure $creatable = true;
+
+    protected int|Closure|null $limit = null;
+
     /** @var list<string>|Closure|null */
     protected array|Closure|null $accepts = null;
 
@@ -39,6 +46,30 @@ class Column
     public static function make(string $name): static
     {
         return new static($name);
+    }
+
+    /**
+     * One column per case of a backed enum, in declaration order. Labels and colours
+     * come from Filament's HasLabel and HasColor when the enum implements them.
+     *
+     * @param  class-string<BackedEnum>  $enum
+     * @return list<static>
+     */
+    public static function fromEnum(string $enum): array
+    {
+        return array_map(function (BackedEnum $case) {
+            $column = static::make((string) $case->value);
+
+            if ($case instanceof HasLabel) {
+                $column->label(fn () => $case->getLabel());
+            }
+
+            if ($case instanceof HasColor) {
+                $column->color(fn () => static::colorFromFilament($case->getColor()));
+            }
+
+            return $column;
+        }, $enum::cases());
     }
 
     public function label(string|Closure|null $label): static
@@ -100,6 +131,25 @@ class Column
     public function collapsed(bool|Closure $condition = true): static
     {
         $this->collapsed = $condition;
+
+        return $this;
+    }
+
+    /** Whether the board's create action offers a "+" on this column (it also needs to be droppable). */
+    public function creatable(bool|Closure $condition = true): static
+    {
+        $this->creatable = $condition;
+
+        return $this;
+    }
+
+    /**
+     * A work-in-progress limit: once the column holds this many cards, nothing more is
+     * moved or created into it. Counted on the board's query, whatever the search shows.
+     */
+    public function limit(int|Closure|null $cards): static
+    {
+        $this->limit = $cards;
 
         return $this;
     }
@@ -167,6 +217,18 @@ class Column
         return (bool) $this->evaluate($this->collapsed);
     }
 
+    public function isCreatable(): bool
+    {
+        return (bool) $this->evaluate($this->creatable);
+    }
+
+    public function getLimit(): ?int
+    {
+        $limit = $this->evaluate($this->limit);
+
+        return $limit === null ? null : max(0, (int) $limit);
+    }
+
     /** @return list<string>|null */
     public function getAccepts(): ?array
     {
@@ -186,6 +248,16 @@ class Column
     public function getSort(): ?array
     {
         return $this->sortColumn ? [$this->sortColumn, $this->sortDirection] : null;
+    }
+
+    /** Filament colours are palettes (shade => value); the board draws one tone, the 500 shade. */
+    protected static function colorFromFilament(mixed $color): ?string
+    {
+        if (is_array($color)) {
+            return $color[500] ?? (array_values($color)[0] ?? null);
+        }
+
+        return $color;
     }
 
     protected function evaluate(mixed $value): mixed

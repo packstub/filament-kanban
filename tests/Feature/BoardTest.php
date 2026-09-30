@@ -1,10 +1,16 @@
 <?php
 
+use Filament\Actions\CreateAction;
+use Filament\Support\Colors\Color;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Event;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
+use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Filter;
+use Packstub\Kanban\Tests\Fixtures\Status;
 use Packstub\Kanban\Tests\Fixtures\Task;
 
 function board(): Board
@@ -170,4 +176,87 @@ it('evaluates column rules as closures', function () {
         ->and($column->accepting('todo'))->toBeFalse()
         ->and($column->isCollapsed())->toBeTrue()
         ->and(Column::make('in_review')->getLabel())->toBe('In Review');
+});
+
+it('builds columns from a backed enum, with its labels and colours', function () {
+    task('Enum-backed', 'doing');
+
+    $state = board()->columns(Status::class)->getState();
+
+    expect(array_column($state, 'name'))->toBe(['todo', 'doing', 'done'])
+        ->and(array_column($state, 'label'))->toBe(['To do', 'In progress', 'Done'])
+        ->and($state[0]['color'])->toBe('gray')
+        ->and($state[1]['color'])->toBe(Color::Amber[500])
+        ->and($state[1]['count'])->toBe(1)
+        ->and(Column::fromEnum(Status::class)[2]->accepts(['doing'])->accepting('todo'))->toBeFalse();
+});
+
+it('refuses a move into a column at its limit, counting cards the search hides', function () {
+    task('Busy', 'doing');
+    $task = task('Next');
+
+    $board = board()->searchable(['title'])->columns([Column::make('todo'), Column::make('doing')->limit(1)]);
+
+    expect($board->getState('next')[1])->toMatchArray(['limit' => 1, 'total' => 1, 'count' => 0])
+        ->and(fn () => $board->move((string) $task->id, 'doing'))->toThrow(MoveRejected::class, 'Doing is full')
+        ->and($task->fresh()->status)->toBe('todo');
+
+    $board->columns([Column::make('todo'), Column::make('doing')->limit(2)])->move((string) $task->id, 'doing');
+
+    expect($task->fresh()->status)->toBe('doing');
+});
+
+it('summarizes each column over the cards the search and filters leave', function () {
+    task('Alpha', 'todo', ['priority' => 3]);
+    task('Beta', 'todo', ['priority' => 4]);
+
+    $board = board()->searchable(['title'])->summarize(fn (Builder $query, Column $column) => $column->getName().': '.$query->sum('priority'));
+
+    expect($board->getState()[0]['summary'])->toBe('todo: 7')
+        ->and($board->getState('beta')[0]['summary'])->toBe('todo: 4')
+        ->and($board->getSummaries(['todo', 'nope', 'todo']))->toBe(['todo' => 'todo: 7'])
+        ->and(board()->getState()[0]['summary'])->toBeNull();
+});
+
+it('knows where a new card may be created', function () {
+    task('Busy', 'doing');
+
+    $board = board()
+        ->createAction(CreateAction::make())
+        ->columns([Column::make('todo'), Column::make('doing')->limit(1), Column::make('done')->creatable(false), Column::make('archived')->readOnly()]);
+
+    expect($board->canCreateIn('todo'))->toBeTrue()
+        ->and($board->canCreateIn('doing'))->toBeFalse() // full
+        ->and($board->canCreateIn('done'))->toBeFalse()
+        ->and($board->canCreateIn('archived'))->toBeFalse()
+        ->and($board->canCreateIn('missing'))->toBeFalse()
+        ->and(array_column($board->getState(), 'creatable'))->toBe([true, true, false, false])
+        ->and(board()->canCreateIn('todo'))->toBeFalse(); // no create action
+});
+
+it('dispatches CardMoved when a card changes column, not when it is reordered', function () {
+    Event::fake([CardMoved::class]);
+    $task = task('Build');
+
+    $board = board()->reorderable('sort')->key('tasks');
+    $board->move((string) $task->id, 'todo', [(string) $task->id]);
+    Event::assertNotDispatched(CardMoved::class);
+
+    $board->move((string) $task->id, 'doing');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->record->is($task) && $e->from === 'todo' && $e->to === 'doing' && $e->board === 'tasks');
+});
+
+it('reads the poll interval', function (string|int|null $interval, ?int $ms) {
+    expect(board()->poll($interval)->getPoll())->toBe($ms);
+})->with([
+    ['10s', 10000], ['1m', 60000], ['2500ms', 2500], [5000, 5000], [10, 1000], [null, null],
+]);
+
+it('shapes avatars and the actions a card offers', function () {
+    $card = Card::make()->title('A')->avatar('https://acme.test/a.png', 'Ana Pop')->avatar(null, 'Dan Ionescu')->avatar(null)->actions([]);
+
+    expect($card->toArray())->toMatchArray([
+        'avatars' => [['url' => 'https://acme.test/a.png', 'name' => 'Ana Pop'], ['url' => null, 'name' => 'Dan Ionescu']],
+        'actions' => [],
+    ])->and(Card::make()->title('B')->toArray())->not->toHaveKeys(['avatars', 'actions']);
 });

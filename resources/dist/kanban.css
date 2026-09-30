@@ -4,7 +4,8 @@
  * Override the --pk-* variables on .pk to restyle it.
  */
 
-.pk {
+/* The dragged card's ghost lives on <body>, outside .pk: it gets the same variables. */
+.pk, .sortable-fallback.pk-card {
     --pk-bg: var(--gray-100);
     --pk-col-bg: color-mix(in oklab, var(--gray-100) 70%, var(--gray-200));
     --pk-col-border: transparent;
@@ -22,7 +23,9 @@
     --pk-gap: 0.75rem;
     --pk-height: calc(100dvh - var(--topbar-height, 4rem) - 9.5rem);
     --pk-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
 
+.pk {
     display: flex;
     flex-direction: column;
     gap: 0.875rem;
@@ -30,7 +33,7 @@
     color: var(--pk-text);
 }
 
-.dark .pk {
+.dark .pk, .dark .sortable-fallback.pk-card {
     --pk-col-bg: rgb(255 255 255 / 0.035);
     --pk-col-border: rgb(255 255 255 / 0.06);
     --pk-card-bg: var(--gray-900);
@@ -42,7 +45,7 @@
 }
 
 .pk [x-cloak] { display: none !important; }
-.pk svg { width: 1rem; height: 1rem; flex: none; }
+.pk svg, .sortable-fallback.pk-card svg { width: 1rem; height: 1rem; flex: none; }
 
 /* ------------------------------------------------------------------ toolbar */
 
@@ -123,6 +126,11 @@
 .pk-menu-item:hover { background: var(--gray-100); }
 .dark .pk-menu-item:hover { background: rgb(255 255 255 / 0.06); }
 .pk-menu-item input { accent-color: var(--pk-ring); }
+.pk-menu-icon { display: grid; width: 1rem; height: 1rem; color: var(--pk-muted); }
+.pk-menu-icon svg { width: 1rem; height: 1rem; }
+.pk-menu-item-danger, .pk-menu-item-danger .pk-menu-icon { color: var(--danger-600); }
+.dark .pk-menu-item-danger, .dark .pk-menu-item-danger .pk-menu-icon { color: var(--danger-400); }
+.pk-menu-sep { height: 1px; margin: 0.3rem 0.25rem; background: var(--pk-card-border); }
 .pk-menu-count { margin-inline-start: auto; color: var(--pk-muted); font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------------------------ board and columns */
@@ -173,24 +181,32 @@
 
 .pk-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 999px; }
 
+.pk-col-title { display: flex; flex-direction: column; min-width: 0; }
+.pk-summary { overflow: hidden; font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; color: var(--pk-muted); }
+
 .pk-count {
+    margin-inline-end: auto;
     color: var(--pk-muted);
     font-size: 0.75rem;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 
-.pk-fold {
+.pk-fold, .pk-create {
     width: 1.625rem;
     height: 1.625rem;
-    margin-inline-start: auto;
     border-color: transparent;
     background: transparent;
     color: var(--pk-muted);
     opacity: 0;
 }
 
-.pk-col:hover .pk-fold, .pk-fold:focus-visible { opacity: 1; }
+.pk-col:hover .pk-fold, .pk-fold:focus-visible, .pk-col:hover .pk-create, .pk-create:focus-visible { opacity: 1; }
+.pk-create:hover { color: var(--pk-text); }
+
+/* a column at its WIP limit */
+.pk-col-full .pk-count { color: var(--danger-600); font-weight: 600; }
+.dark .pk-col-full .pk-count { color: var(--danger-400); }
 
 .pk-cards {
     display: flex;
@@ -239,6 +255,8 @@
 .pk-col-folded .pk-cards, .pk-col-folded .pk-col-empty, .pk-col-folded .pk-more { display: none; }
 .pk-col-folded .pk-col-head { flex-direction: column; gap: 0.6rem; height: 100%; padding: 0.75rem 0; }
 .pk-col-folded .pk-col-head h3 { writing-mode: vertical-rl; }
+.pk-col-folded .pk-summary, .pk-col-folded .pk-create { display: none; }
+.pk-col-folded .pk-count { margin: 0; }
 .pk-col-folded .pk-fold { order: -1; margin: 0; opacity: 1; transform: rotate(180deg); }
 
 /* while dragging: where the card may go, and where it may not */
@@ -288,6 +306,24 @@
 .pk-title { font-size: 0.8125rem; font-weight: 500; line-height: 1.3; color: var(--pk-text); overflow-wrap: anywhere; }
 
 .pk-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
+.pk-avatars { display: flex; margin-inline-start: auto; padding-inline-start: 0.25rem; }
+.pk-avatar {
+    display: grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    overflow: hidden;
+    border: 2px solid var(--pk-card-bg);
+    border-radius: 999px;
+    background: var(--gray-200);
+    color: var(--gray-700);
+    font-size: 0.55rem;
+    font-weight: 600;
+}
+.pk-avatar + .pk-avatar { margin-inline-start: -0.4rem; }
+.pk-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.dark .pk-avatar { background: var(--gray-700); color: var(--gray-200); }
+
 .pk-meta { min-width: 0; overflow: hidden; font-size: 0.72rem; color: var(--pk-muted); white-space: nowrap; text-overflow: ellipsis; }
 
 .pk-badge {
@@ -319,7 +355,7 @@
 .pk-card:hover .pk-card-menu, .pk-card-menu:focus-visible, .pk-card-menu[aria-expanded="true"] { opacity: 1; }
 .pk-card-menu:hover { color: var(--pk-text); background: var(--gray-100); }
 .dark .pk-card-menu:hover { background: rgb(255 255 255 / 0.08); }
-@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold { opacity: 1; } }
+@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold, .pk-create { opacity: 1; } }
 
 /* "Move to" opens inside the card, so the column's scroll never clips it */
 .pk-card-popover { position: static; min-width: 0; margin: 0 0.4rem 0.4rem; box-shadow: none; }
