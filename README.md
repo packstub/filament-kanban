@@ -16,18 +16,14 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 
 ## Features
 
-- **[Instant drag and drop](#instant-moves)**: a drop moves the card at once and asks the server afterwards. If the server says no, the card slides back and the reason is shown. The board never re-renders on a move.
-- **[Rules on the server](#columns-and-rules)**: per-user columns, drop rules, read-only columns and WIP limits. Impossible targets dim while you drag, and the server enforces the same rules.
-- **[Filament actions on cards](#card-actions)**: edit in a modal or slide-over, delete, or run your own actions from a card's menu; one click opens a card.
-- **[Create in a column](#create-in-a-column)**: a "+" on each column opens your create form with the column already set.
-- **[Columns from an enum](#columns-and-rules)**: one line turns a backed enum into columns, with labels and colours from `HasLabel` and `HasColor`.
+- **[Instant drag and drop](#instant-moves)**: a drop lands at once; if the server refuses, the card slides back with the reason.
+- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
+- **[Filament actions on cards](#card-actions)**: edit in a slide-over, delete or run your own actions, and [create in a column](#create-in-a-column).
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
-- **[Cards in one closure](#cards)**: a reference, a title, an amount, badges, a line of meta and avatars. Cards are drawn in the browser from JSON, so hundreds of them stay light.
-- **[Search and filters](#search-filters-and-paging)**: instant search as you type (refined on the server), select filters, paging per column with infinite scroll.
-- **[Focus mode](#configuration)**: the board page hides the panel's sidebar so the columns get the whole width.
-- **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` Laravel event, a browser event, and optional polling for shared boards.
-- Folding and hiding columns (remembered per user), "Move to…" for touch and keyboards, manual ordering.
-- **Dark mode ready** and **translatable** (English, Romanian, Russian, German).
+- **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
+- **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
+- **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` event, browser events and polling for shared boards.
+- **Dark mode and translations**: English, Romanian, Russian and German included.
 
 ## Compatibility
 

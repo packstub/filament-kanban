@@ -5,6 +5,7 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 ## Unreleased
 
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
+- Docs: a shorter Features list in the README and on the docs index, one line per area.
 
 ## 0.2.0 - 2026-09-30
 

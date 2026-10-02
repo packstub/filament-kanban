@@ -8,16 +8,14 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 - Packagist: [packstub/filament-kanban](https://packagist.org/packages/packstub/filament-kanban)
 - Support: [GitHub issues](https://github.com/packstub/filament-kanban/issues)
 
-## What you get
+## Features
 
-| Feature | What it means for you |
-| --- | --- |
-| **Instant moves** | A drop moves the card at once and asks the server afterwards. If the server says no, the card slides back and the reason is shown. The board never re-renders on a move. |
-| **Rules on the server** | Per-user columns, drop rules, read-only columns and WIP limits: the browser dims what you cannot do, and the server enforces the same rules. |
-| **Filament actions** | Edit a card in a modal or slide-over, delete it, run your own actions from its menu, and create a card straight in a column. |
-| **Columns from an enum** | One line turns a backed enum into columns, with labels and colours from `HasLabel` and `HasColor`. |
-| **Column summaries** | A sum or an average under each column title, kept current after every move. |
-| **Built for big boards** | Cards are drawn in the browser from JSON: hundreds of them stay light, with paging per column and instant search. |
+- **[Instant drag and drop](moves.md)**: a drop lands at once; if the server refuses, the card slides back with the reason.
+- **[Rules on the server](columns.md)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
+- **[Filament actions on cards](actions.md)**: edit in a slide-over, delete or run your own actions, and create in a column.
+- **[Column summaries](columns.md#summaries)**: a sum or an average under each column title, kept current after every move.
+- **[Light on big boards](cards.md)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
+- **[Search, filters and paging](configuration.md#search)**: instant search, select filters and infinite scroll per column.
 
 ## Guides
 
