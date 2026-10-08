@@ -8,7 +8,12 @@
     The browser owns the board: cards are drawn from JSON by Alpine and moved
     optimistically; Livewire only answers renderless calls. wire:ignore keeps a
     page re-render (a header action's modal, say) from resetting it.
+
+    The stylesheet arrives with x-load-css, after the first paint: without this
+    the markup shows unstyled for a frame (an icon the width of the page).
+    kanban.css undoes the rule with a more specific selector once it applies.
 --}}
+<style>.pk { visibility: hidden; }</style>
 <div
     wire:ignore
     x-load

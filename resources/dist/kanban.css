@@ -44,6 +44,8 @@
     --pk-soft: var(--gray-300);
 }
 
+/* The view hides the board inline until this file applies (see board.blade.php). */
+div.pk { visibility: visible; }
 .pk [x-cloak] { display: none !important; }
 .pk svg, .sortable-fallback.pk-card svg { width: 1rem; height: 1rem; flex: none; }
 
@@ -217,8 +219,10 @@
     margin: 0;
     padding: 0.125rem 0.5rem 0.5rem;
     list-style: none;
+    /* Vertical only, and no overscroll containment: a swipe sideways over a column, or past the end of
+       a short one, reaches the board and the page instead of stopping at the column. */
+    overflow-x: hidden;
     overflow-y: auto;
-    overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--pk-card-border) transparent;
 }

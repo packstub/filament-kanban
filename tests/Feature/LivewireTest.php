@@ -20,7 +20,8 @@ it('renders the board with its state as JSON for the browser', function () {
         ->assertSeeHtml('x-data="packstubKanban(')
         ->assertSeeHtml('packstub/filament-kanban/components/kanban.js')
         ->assertSee('Write docs')
-        ->assertSeeHtml('wire:ignore');
+        ->assertSeeHtml('wire:ignore')
+        ->assertSeeHtml('<style>.pk { visibility: hidden; }</style>');
 });
 
 it('moves a card without re-rendering and answers with the card', function () {
