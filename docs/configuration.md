@@ -56,6 +56,8 @@ Each column loads `perColumn()` cards (50 by default). The rest come in pages as
 
 `poll('10s')` (or `'1m'`, or milliseconds) reloads the board every so often, so a shared board picks up other people's changes. It skips a beat while a card is being dragged or saved, while a menu is open, and while the tab is in the background. Columns keep the cards already loaded with "Load more" (up to ten pages), so a poll never scrolls anyone back to the top.
 
+What a load (the first render, a poll, a search, the refresh after an action) costs: one grouped count for the column counts, one more for the WIP totals when a column has a `limit()`, one query per column for its cards, plus your `summarize()` per column. The page loads this once, when the board is first drawn; a re-render of the page afterwards (an action's modal, a form submit) does not read the board again, since the browser keeps it.
+
 ## Focus mode
 
 The board page hides the panel's sidebar so the columns get the whole width; a button in the toolbar brings it back (remembered per user). `focusMode(false)` keeps the sidebar.
@@ -115,7 +117,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 
 ### Column
 
-`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`. See [Columns](columns.md).
+`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `icon()`, `description()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`. See [Columns](columns.md).
 
 ### Lane
 
@@ -123,4 +125,4 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 
 ### Card
 
-`make()`, `eyebrow()`, `title()`, `aside()`, `badge()`, `meta()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`. See [Cards](cards.md).
+`make()`, `eyebrow()`, `title()`, `aside()`, `description()`, `badge()`, `meta()`, `due()`, `progress()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`, `locked()`, `draggable()`. See [Cards](cards.md).

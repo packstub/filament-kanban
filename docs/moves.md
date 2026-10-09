@@ -4,7 +4,7 @@
 
 1. The card moves in the browser at once, the column counts change, and the card is marked as pending.
 2. The browser asks the server (`kanbanMove`, a renderless Livewire call: nothing is re-rendered).
-3. The server loads the record through the board's `query()` and checks the rules: both columns are visible to this user, the source is `draggable`, the target is `droppable`, `accepts` the source, and is not at its [WIP limit](columns.md#wip-limits).
+3. The server loads the record through the board's `query()` and checks the rules: both columns are visible to this user, the card is not [locked](cards.md#locking-a-card), the source is `draggable`, the target is `droppable`, `accepts` the source, and is not at its [WIP limit](columns.md#wip-limits).
 4. Your move logic runs (by default: set the column attribute and save).
 5. The server answers with the card as it looks now; the card flashes once. If anything refused the move, the card slides back and the reason is shown as a notification.
 
@@ -38,7 +38,9 @@ With [swimlanes](swimlanes.md), a bulk move keeps each card's lane.
 
 ## Reordering
 
-`->reorderable('sort')` lets users order cards inside a column (and choose the position when moving to another one). The attribute is an integer column; after each drop the positions of the target column's loaded cards are stored as 1, 2, 3… Ids from other columns, or outside the query, are ignored.
+`->reorderable('sort')` lets users order cards inside a column (and choose the position when moving to another one). The attribute is an integer column; after each drop the whole target column is renumbered: the cards the browser shows get 1, 2, 3… top to bottom, and every other card of the column (beyond the loaded pages) follows them in its current order, so the two never collide. A card without a position yet (a new record) sorts after the positioned ones, never to the top. Only the positions that change are written. Ids from other columns, or outside the query, are ignored.
+
+The move and the new order are saved in one transaction: a refused move (`MoveRejected`) or a failure while storing the order leaves both untouched. The cards beyond the loaded page are not rewritten one by one: they are left alone when their positions already sit above the loaded ones and shifted up in one statement when they collide, and cards without a position are numbered a few hundred per statement.
 
 ```php
 ->reorderable('sort')
@@ -47,7 +49,7 @@ With [swimlanes](swimlanes.md), a bulk move keeps each card's lane.
 
 ## Events
 
-After a card changes column (not after reordering inside one), the board dispatches a Laravel event:
+After a card changes column (not after reordering inside one), the board dispatches a Laravel event. It goes out once the move's transaction commits; when `move()` runs inside a transaction of your own it waits for that one, and a rollback (a `MoveRejected`, a failure while saving) never fires it. A listener that throws is reported; the move stays saved:
 
 ```php
 use Packstub\Kanban\Events\CardMoved;

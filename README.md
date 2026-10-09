@@ -17,7 +17,7 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 ## Features
 
 - **[Instant drag and drop](#instant-moves)**: a drop lands at once; if the server refuses, the card slides back with the reason.
-- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
+- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns, locked cards and WIP limits.
 - **[Filament actions on cards](#card-actions)**: edit in a slide-over, delete or run your own actions, and [create in a column](#create-in-a-column).
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
@@ -171,7 +171,7 @@ Read more: [Columns](https://packstub.dev/docs/filament-kanban/columns#summaries
 
 ## Cards
 
-`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `badge($label, $color, $condition)`, `meta([...])` (empty parts dropped), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()` and `actions([...])`.
+`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `description()` (two muted lines), `badge($label, $color, $condition, icon: ...)`, `meta([...])` (empty parts dropped), `due($date)` (red once past, amber on the day), `progress($done, $total)` (a thin bar), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()`, `actions([...])` and `locked()` (one card that stays put, refused by the server too).
 
 Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 

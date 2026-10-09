@@ -23,10 +23,17 @@ const TEXT = new WeakMap()
 // Without swimlanes every column is one cell: the board draws this single, nameless lane.
 const NO_LANE = { value: null }
 
+// The viewer's calendar day as an ISO date (YYYY-MM-DD), compared with a card's due date.
+function localDay(now = new Date()) {
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
+
 export default function packstubKanban(config) {
     return {
-        columns: config.columns,
+        columns: config.columns || [],
         lanes: config.lanes || null,
+        icons: config.icons || {}, // badge icons by name, grown from every answer that carries cards
+        today: localDay(), // the viewer's calendar day, for due dates; moves on at midnight
         filters: config.filters,
         cardActions: config.cardActions || [],
         bulkActions: config.bulkActions || [],
@@ -46,6 +53,8 @@ export default function packstubKanban(config) {
         refreshTimer: null,
         refreshSeq: 0,
         pending: 0,
+        drawn: config.columns !== null, // false until a board drawn again has its columns
+        retries: 0,
 
         /** Whether cards can be selected: the board has bulk actions, or asked for it with selectable(). */
         get hasSelection() {
@@ -59,6 +68,12 @@ export default function packstubKanban(config) {
 
         init() {
             this.restore()
+
+            // Drawn again on a later request (the server sends no state then): ask for it
+            // instead of drawing an empty board.
+            if (! this.drawn) {
+                this.refresh()
+            }
 
             if (config.focus) {
                 document.body.classList.toggle('pk-focus-sidebar', this.sidebar)
@@ -84,6 +99,12 @@ export default function packstubKanban(config) {
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
 
+            // A board left open overnight recolours its due dates.
+            this.clock = setInterval(() => {
+                const day = localDay()
+                if (day !== this.today) this.today = day
+            }, 60000)
+
             // Pick up other people's changes, but never while a card is in the air.
             if (config.poll) {
                 this.poller = setInterval(() => {
@@ -98,6 +119,7 @@ export default function packstubKanban(config) {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
             clearInterval(this.poller)
+            clearInterval(this.clock)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
@@ -118,7 +140,9 @@ export default function packstubKanban(config) {
                 },
                 sort: config.reorderable,
                 draggable: '.pk-card',
-                filter: '.pk-card-menu, .pk-card-popover, .pk-card-pending',
+                // A locked card is filtered rather than left out of `draggable`, so Sortable's
+                // indexes still count every card and match the column's state.
+                filter: '.pk-card-locked, .pk-card-menu, .pk-card-popover, .pk-card-pending',
                 preventOnFilter: false,
                 disabled: ! column.draggable && ! column.droppable,
                 animation: 150,
@@ -226,6 +250,8 @@ export default function packstubKanban(config) {
                         return undo(result?.message || this.t.failed)
                     }
 
+                    Object.assign(this.icons, result.icons || {})
+
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
                         const column = this.findColumn(name)
                         if (column) column.summary = summary
@@ -282,7 +308,12 @@ export default function packstubKanban(config) {
         },
 
         hasMenu(card, column) {
-            return this.actionsFor(card).length > 0 || (column.draggable && this.targets(column.name).length > 0)
+            return this.actionsFor(card).length > 0 || (this.canMove(card, column) && this.targets(column.name).length > 0)
+        },
+
+        // The column lets cards out and the card itself is not locked (the server checks both again).
+        canMove(card, column) {
+            return !! column.draggable && card.draggable !== false
         },
 
         runAction(name, card) {
@@ -442,6 +473,8 @@ export default function packstubKanban(config) {
                         return this.notify(result?.message || this.t.failed, 'danger')
                     }
 
+                    Object.assign(this.icons, result.icons || {})
+
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
                         const column = this.findColumn(name)
                         if (column) column.summary = summary
@@ -487,7 +520,7 @@ export default function packstubKanban(config) {
             let text = TEXT.get(raw)
 
             if (text === undefined) {
-                text = [card.eyebrow, card.title, card.aside, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
+                text = [card.eyebrow, card.title, card.aside, card.description, card.due?.label, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
                     .filter(Boolean).join(' ').toLowerCase()
                 TEXT.set(raw, text)
             }
@@ -513,19 +546,43 @@ export default function packstubKanban(config) {
                 ? Object.fromEntries(this.lanes.map((l) => [l.value, this.loadedIn(c, l)]))
                 : c.cards.length])) : {}
 
-            this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
-                if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
+            this.$wire.kanbanRefresh(this.search, this.active, loaded).catch(() => null).then((result) => {
+                if (seq !== this.refreshSeq) {
                     return
                 }
+
+                // Without its columns the board would stay empty: try again, a little later each time.
+                if (! result && ! this.drawn && this.retries < 5) {
+                    this.refreshTimer = setTimeout(() => this.refresh(), 1000 * 2 ** this.retries++)
+                }
+
+                if (! result || (background && (this.dragging || this.pending))) {
+                    return
+                }
+
+                Object.assign(this.icons, result.icons || {})
 
                 if (this.lanes && result.lanes) {
                     this.lanes = result.lanes
                     this.restoreLanes()
                 }
 
+                if (! this.drawn) {
+                    this.columns = result.columns
+                    this.drawn = true
+                    this.restore(false) // collapsed() columns and the saved folded/hidden ones, now that there are columns
+                    return
+                }
+
                 for (const fresh of result.columns) {
                     const column = this.findColumn(fresh.name)
                     if (column) {
+                        Object.assign(column, {
+                            label: fresh.label,
+                            labelHtml: fresh.labelHtml,
+                            icon: fresh.icon,
+                            description: fresh.description,
+                        })
                         column.cards = fresh.cards
                         column.count = fresh.count
                         column.counts = fresh.counts
@@ -560,9 +617,10 @@ export default function packstubKanban(config) {
             this.loading[key] = true
 
             this.$wire.kanbanMore(column.name, this.loadedIn(column, lane), this.search, this.active, this.lanes ? lane.value : null)
-                .then((cards) => {
+                .then((result) => {
+                    Object.assign(this.icons, result?.icons || {})
                     const known = new Set(column.cards.map((c) => c.id))
-                    column.cards.push(...(cards || []).filter((c) => ! known.has(c.id)))
+                    column.cards.push(...(result?.cards || []).filter((c) => ! known.has(c.id)))
                 })
                 .finally(() => {
                     this.loading[key] = false
@@ -601,7 +659,7 @@ export default function packstubKanban(config) {
             this.persist()
         },
 
-        restore() {
+        restore(sidebar = true) {
             for (const column of this.columns) {
                 this.folded[column.name] = !! column.collapsed
             }
@@ -612,7 +670,7 @@ export default function packstubKanban(config) {
                     const names = this.columns.map((c) => c.name)
                     Object.assign(this.folded, Object.fromEntries(Object.entries(saved.folded || {}).filter(([n]) => names.includes(n))))
                     this.hidden = (saved.hidden || []).filter((n) => names.includes(n))
-                    this.sidebar = !! saved.sidebar
+                    if (sidebar) this.sidebar = !! saved.sidebar
                 }
             } catch (e) {}
 
@@ -635,7 +693,14 @@ export default function packstubKanban(config) {
 
         persist() {
             try {
-                localStorage.setItem(config.key, JSON.stringify({ folded: this.folded, hidden: this.hidden, sidebar: this.sidebar, lanes: this.foldedLanes }))
+                // Before the columns arrive, folded and hidden are empty: keep the saved ones.
+                const saved = this.drawn ? null : JSON.parse(localStorage.getItem(config.key) || 'null')
+                localStorage.setItem(config.key, JSON.stringify({
+                    folded: saved ? saved.folded || {} : this.folded,
+                    hidden: saved ? saved.hidden || [] : this.hidden,
+                    sidebar: this.sidebar,
+                    lanes: this.foldedLanes,
+                }))
             } catch (e) {}
         },
 
@@ -719,6 +784,21 @@ export default function packstubKanban(config) {
 
         initials(name) {
             return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+        },
+
+        // A column label is text (escaped here) unless the server rendered an Htmlable.
+        labelHtml(column) {
+            return column.labelHtml ? column.label : this.escape(column.label)
+        },
+
+        escape(text) {
+            return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+        },
+
+        // Past or today, by the ISO date in the viewer's own calendar day.
+        dueState(due) {
+            if (! due?.date) return ''
+            return due.date < this.today ? 'pk-due-past' : (due.date === this.today ? 'pk-due-today' : '')
         },
 
         notify(message, status) {

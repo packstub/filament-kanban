@@ -16,6 +16,7 @@ return [
     'missing' => 'Diese Karte ist nicht mehr auf dem Board. Neu laden, um den aktuellen Stand zu sehen.',
     'not_allowed' => 'Du kannst diese Karte nicht verschieben.',
     'not_allowed_into' => 'Karten können von hier nicht nach :column verschoben werden.',
+    'locked' => 'Diese Karte kann nicht verschoben werden.',
     'failed' => 'Das Verschieben hat nicht geklappt.',
     'offline' => 'Server nicht erreichbar. Die Karte ist wieder an ihrem Platz.',
     'card_menu' => 'Kartenaktionen',

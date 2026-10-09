@@ -16,6 +16,7 @@ return [
     'missing' => 'Cardul nu mai este pe tablă. Reîncarcă pagina pentru ultima versiune.',
     'not_allowed' => 'Nu poți muta acest card.',
     'not_allowed_into' => 'Cardurile nu pot fi mutate de aici în :column.',
+    'locked' => 'Acest card nu poate fi mutat.',
     'failed' => 'Mutarea nu a reușit.',
     'offline' => 'Serverul nu a răspuns. Cardul a revenit la locul lui.',
     'card_menu' => 'Acțiuni card',

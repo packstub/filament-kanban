@@ -2,8 +2,13 @@
 
 use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\HtmlString;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
@@ -179,6 +184,159 @@ it('stores the order of a reorderable column', function () {
         ->and($other->fresh()->sort)->toBeNull(); // ids from other columns are ignored
 });
 
+it('counts the WIP totals of every limited column in one grouped query', function () {
+    task('A', 'todo');
+    task('B', 'doing');
+    task('C', 'doing');
+
+    $limited = board()->columns([Column::make('todo')->limit(5), Column::make('doing')->limit(2), Column::make('done')]);
+
+    DB::enableQueryLog();
+    $state = $limited->getState();
+    $grouped = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_contains($sql, 'count(*)'));
+
+    expect(array_column($state, 'total'))->toBe([1, 2, null])
+        ->and($grouped)->toHaveCount(2) // the filtered counts and the unfiltered totals
+        ->and($grouped->every(fn (string $sql) => str_contains($sql, 'group by')))->toBeTrue();
+
+    DB::flushQueryLog();
+    board()->getState();
+
+    expect(collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_contains($sql, 'count(*)')))->toHaveCount(1); // no limit, no totals
+});
+
+it('renumbers the whole column: the loaded cards first, the others after them in their current order', function () {
+    $a = task('A', 'todo', ['sort' => 1]);
+    $b = task('B', 'todo', ['sort' => 2]);
+    $c = task('C', 'todo', ['sort' => 3]);
+    $d = task('D', 'todo', ['sort' => 4]);
+    $n = task('N', 'todo'); // no position yet
+
+    $board = board()->reorderable('sort')->perColumn(2);
+
+    DB::enableQueryLog();
+    $board->move((string) $b->id, 'todo', [(string) $b->id, (string) $a->id]);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect(array_column($board->getCards('todo', limit: 10), 'title'))->toBe(['B', 'A', 'C', 'D', 'N'])
+        ->and(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['B' => 1, 'A' => 2, 'C' => 3, 'D' => 4, 'N' => 5])
+        ->and($updates)->toHaveCount(2); // only the positions that change, one statement each for the loaded (B, A) and the unnumbered (N); C and D already fit
+});
+
+it('shifts the cards beyond the loaded page in one statement when they collide, and leaves them alone when they do not', function () {
+    foreach (range(1, 6) as $i) {
+        task("T{$i}", 'todo', ['sort' => $i]);
+    }
+    $new = task('New', 'doing', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')->perColumn(2);
+
+    // Dropped at the top of the column: the two loaded cards get 1 and 2, the four below (3..6) collide and move up by one.
+    DB::enableQueryLog();
+    $board->move((string) $new->id, 'todo', [(string) $new->id, '1', '2']);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['New' => 1, 'T1' => 2, 'T2' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7])
+        ->and($updates)->toHaveCount(3) // the status, T1 and T2 together (New already is 1), then one shift of the tail
+        ->and($updates->last())->toContain('"sort" = "tasks"."sort" + 1');
+
+    // Reordered within the loaded page: the tail already sits above it, nothing below is touched.
+    DB::flushQueryLog();
+    $board->move('2', 'todo', ['2', (string) $new->id, '1']);
+
+    expect(collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update')))->toHaveCount(1)
+        ->and(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['T2' => 1, 'New' => 2, 'T1' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7]);
+});
+
+it('sorts a card without a position last, never first', function () {
+    task('A', 'todo', ['sort' => 1]);
+    task('N', 'todo');
+    task('B', 'todo', ['sort' => 2]);
+
+    expect(array_column(board()->reorderable('sort')->getCards('todo'), 'title'))->toBe(['A', 'B', 'N']);
+});
+
+it('saves a move and its order in one transaction: a refusal or a failure rolls both back', function () {
+    Event::fake([CardMoved::class]);
+    $task = task('Build');
+    $other = task('Review', 'doing', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')->moveUsing(function (Task $record, string $to) {
+        $record->update(['status' => $to]);
+
+        throw new MoveRejected('Changed my mind.');
+    });
+
+    expect(fn () => $board->move((string) $task->id, 'doing', [(string) $task->id, (string) $other->id]))->toThrow(MoveRejected::class, 'Changed my mind.')
+        ->and($task->fresh()->status)->toBe('todo')
+        ->and($other->fresh()->sort)->toBe(1);
+    Event::assertNotDispatched(CardMoved::class);
+
+    // The move itself goes through, then storing the order fails: the move is undone too.
+    $broken = board()->reorderable('no_such_column');
+
+    expect(fn () => $broken->move((string) $task->id, 'doing', [(string) $task->id]))->toThrow(QueryException::class)
+        ->and($task->fresh()->status)->toBe('todo');
+    Event::assertNotDispatched(CardMoved::class);
+
+    board()->reorderable('sort')->move((string) $task->id, 'doing', [(string) $task->id, (string) $other->id]);
+
+    expect($task->fresh())->toMatchArray(['status' => 'doing', 'sort' => 1])
+        ->and($other->fresh()->sort)->toBe(2);
+    Event::assertDispatched(CardMoved::class, 1);
+});
+
+it('orders by a qualified position, so a joined query with the same column stays valid', function () {
+    task('B', 'todo', ['sort' => 2]);
+    task('A', 'todo', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')
+        ->query(fn () => Task::query()->select('tasks.*')->leftJoin('tasks as parent', 'parent.id', '=', 'tasks.project_id'));
+
+    expect(array_column($board->getCards('todo'), 'title'))->toBe(['A', 'B']);
+});
+
+it('numbers cards without a position in batches, not one statement per card', function () {
+    foreach (range(1, 600) as $i) {
+        task("T{$i}");
+    }
+    $new = task('New', 'doing');
+
+    DB::enableQueryLog();
+    board()->reorderable('sort')->move((string) $new->id, 'todo', [(string) $new->id]);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect($updates)->toHaveCount(4) // the status, New, then the 600 unnumbered cards in two statements
+        ->and(Task::query()->where('title', 'T1')->value('sort'))->toBe(2)
+        ->and(Task::query()->where('title', 'T600')->value('sort'))->toBe(601)
+        ->and(Task::query()->whereNull('sort')->count())->toBe(0);
+});
+
+it('forgets a cached card when its move rolls back', function () {
+    $task = task('Build');
+
+    $board = board()->moveUsing(function (Task $record, string $to) {
+        $record->setAttribute('status', $to)->save();
+
+        throw new MoveRejected('Not now.');
+    });
+
+    expect(fn () => $board->move((string) $task->id, 'doing'))->toThrow(MoveRejected::class)
+        ->and($board->findRecord((string) $task->id)->status)->toBe('todo');
+});
+
+it('keeps a saved move when a CardMoved listener throws, and reports the listener', function () {
+    $task = task('Build');
+    Event::listen(CardMoved::class, fn () => throw new RuntimeException('Mail server down'));
+    Exceptions::fake();
+
+    $card = board()->move((string) $task->id, 'doing');
+
+    expect($card['title'])->toBe('Build')
+        ->and($task->fresh()->status)->toBe('doing');
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'Mail server down');
+});
+
 it('evaluates column rules as closures', function () {
     $column = Column::make('done')
         ->label(fn () => 'Shipped')
@@ -276,4 +434,110 @@ it('shapes avatars and the actions a card offers', function () {
         'avatars' => [['url' => 'https://acme.test/a.png', 'name' => 'Ana Pop'], ['url' => null, 'name' => 'Dan Ionescu']],
         'actions' => [],
     ])->and(Card::make()->title('B')->toArray())->not->toHaveKeys(['avatars', 'actions']);
+});
+
+it('shapes a description, progress, a due date and badge icons, and leaves them out when unset', function () {
+    $this->travelTo(new DateTimeImmutable('2026-10-09'));
+
+    $card = Card::make()
+        ->title('A')
+        ->description('Two boxes, leave them at the gate')
+        ->progress(3, 5)
+        ->due(new DateTimeImmutable('2026-10-07'))
+        ->badge('call', 'sky', icon: 'heroicon-m-phone')
+        ->badge('plain', 'gray');
+
+    expect($card->toArray())->toMatchArray([
+        'description' => 'Two boxes, leave them at the gate',
+        'progress' => ['value' => 0.6, 'label' => '3/5'],
+        'due' => ['date' => '2026-10-07', 'label' => 'Oct 7'],
+    ])
+        ->and($card->toArray()['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and($card->toArray()['badges'][1])->not->toHaveKey('icon')
+        ->and(Card::make()->badge('x', icon: Heroicon::Phone)->toArray()['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and(Card::make()->progress(0.4)->toArray()['progress'])->toBe(['value' => 0.4, 'label' => '40%'])
+        ->and(Card::make()->progress(50)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '100%']) // one number is a fraction, clamped
+        ->and(Card::make()->progress(7, 5)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '7/5'])
+        ->and(Card::make()->progress(2.5, 5)->toArray()['progress'])->toBe(['value' => 0.5, 'label' => '2.5/5'])
+        ->and(Card::make()->title('B')->progress(3, null)->toArray())->not->toHaveKey('progress') // nothing to count: no bar
+        ->and(Card::make()->title('B')->progress(1, 0)->toArray())->not->toHaveKey('progress')
+        ->and(Card::make()->due(new DateTimeImmutable('2025-10-07'))->toArray()['due']['label'])->toBe('Oct 7, 2025') // another year says so
+        ->and(Card::make()->due(new DateTimeImmutable('2026-10-07'), 'Tomorrow')->toArray()['due']['label'])->toBe('Tomorrow')
+        ->and(Card::make()->due(new DateTimeImmutable('2026-10-07 23:30', new DateTimeZone('UTC')))->toArray()['due']['date'])->toBe('2026-10-07') // the day of the date given, in its own zone
+        ->and(Card::make()->title('B')->progress(null)->due(null)->toArray())->not->toHaveKeys(['description', 'progress', 'due', 'draggable']);
+
+    config(['app.date_format' => 'd.m.Y']);
+
+    expect(Card::make()->due(new DateTimeImmutable('2026-10-07'))->toArray()['due']['label'])->toBe('07.10.2026');
+});
+
+it('sends each badge icon once per request, by name, instead of inside every card', function () {
+    task('A', 'todo', ['priority' => 9]);
+    task('B', 'todo', ['priority' => 9]);
+
+    $board = board()->card(fn (Task $task) => Card::make()->title($task->title)->badge('call', 'sky', icon: 'heroicon-m-phone')->badge('mail', icon: 'heroicon-m-envelope'));
+
+    expect($board->getIcons())->toBe([])
+        ->and($board->getCards('todo')[1]['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and(array_keys($board->getIcons()))->toBe(['heroicon-m-phone', 'heroicon-m-envelope'])
+        ->and($board->getIcons()['heroicon-m-phone'])->toContain('<svg')
+        ->and(json_encode($board->getCards('todo')))->not->toContain('<svg');
+});
+
+it('evaluates a label closure once per column', function () {
+    $runs = 0;
+    $column = Column::make('todo')->label(function () use (&$runs) {
+        $runs++;
+
+        return new HtmlString('<em>To do</em>');
+    });
+
+    $state = board()->columns([$column])->getState();
+
+    expect($state[0])->toMatchArray(['label' => '<em>To do</em>', 'labelHtml' => true])
+        ->and($runs)->toBe(1);
+});
+
+it('locks a card: said in the JSON, refused by the server for a move and a reorder alike', function () {
+    $locked = task('Locked');
+    $free = task('Free');
+
+    $board = board()->reorderable('sort')->card(fn (Task $task) => Card::make()->title($task->title)->locked($task->title === 'Locked'));
+
+    expect($board->getCards('todo')[0])->toMatchArray(['title' => 'Locked', 'draggable' => false])
+        ->and($board->getCards('todo')[1])->not->toHaveKey('draggable')
+        ->and(Card::make()->draggable(false)->isDraggable())->toBeFalse()
+        ->and(Card::make()->locked(false)->isDraggable())->toBeTrue()
+        ->and(fn () => $board->move((string) $locked->id, 'doing'))->toThrow(MoveRejected::class, 'This card cannot be moved.')
+        ->and(fn () => $board->move((string) $locked->id, 'todo', [(string) $free->id, (string) $locked->id]))->toThrow(MoveRejected::class, 'This card cannot be moved.')
+        ->and($locked->fresh()->status)->toBe('todo')
+        ->and($locked->fresh()->sort)->toBeNull();
+
+    $board->move((string) $free->id, 'doing');
+
+    expect($free->fresh()->status)->toBe('doing');
+
+    // Dropped back where it was on a board without reordering: nothing changes, nothing to refuse.
+    expect(board()->card(fn (Task $task) => Card::make()->title($task->title)->locked())->move((string) $locked->id, 'todo'))
+        ->toMatchArray(['title' => 'Locked', 'draggable' => false]);
+});
+
+it('keeps a column label closure: set again, it runs again', function () {
+    $column = Column::make('todo')->label(fn () => 'First');
+
+    expect($column->getLabel())->toBe('First')
+        ->and($column->label(fn () => 'Second')->getLabel())->toBe('Second');
+});
+
+it('tells the browser whether a column label is HTML, and gives it the icon and description', function () {
+    $state = board()->columns([
+        Column::make('todo')->label(fn () => new HtmlString('<em>To do</em>'))->icon('heroicon-m-inbox')->description(fn () => 'New work lands here'),
+        Column::make('doing')->label('<b>not html</b>'),
+        Column::make('done'),
+    ])->getState();
+
+    expect($state[0])->toMatchArray(['label' => '<em>To do</em>', 'labelHtml' => true, 'description' => 'New work lands here'])
+        ->and($state[0]['icon'])->toContain('<svg')
+        ->and($state[1])->toMatchArray(['label' => '<b>not html</b>', 'labelHtml' => false, 'icon' => null, 'description' => null])
+        ->and(Column::make('x')->label(new HtmlString('<i>x</i>'))->hasHtmlLabel())->toBeTrue();
 });

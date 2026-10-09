@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\MySqlConnection;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Conditionable;
 use Packstub\Kanban\Events\CardMoved;
@@ -91,6 +92,9 @@ class Board
 
     /** @var array<string, bool> */
     protected array $recordSets = [];
+
+    /** @var array<string, string|null>  badge icons the cards presented so far use, name => SVG */
+    protected array $icons = [];
 
     public static function make(): static
     {
@@ -617,19 +621,29 @@ class Board
     public function getState(string $search = '', array $filters = [], array $loaded = []): array
     {
         $columns = $this->getColumns();
-        $counts = $this->counts($search, $filters);
         $lanes = $this->getLanes();
+        $counts = $lanes === null
+            ? $this->countsOf($this->filteredQuery($search, $filters))
+            : $this->laneCountsOf($this->filteredQuery($search, $filters));
+
+        // What the WIP limits count, unfiltered: one grouped query, only when a column has a limit.
+        $totals = array_filter($columns, fn (Column $column) => $column->getLimit() !== null) !== []
+            ? $this->countsOf($this->baseQuery())
+            : [];
 
         return array_map(fn (Column $column) => [
             'name' => $column->getName(),
             'label' => $column->getLabel(),
+            'labelHtml' => $column->hasHtmlLabel(),
+            'icon' => $column->getIcon(),
+            'description' => $column->getDescription(),
             'color' => $column->getColor(),
             'collapsed' => $column->isCollapsed(),
             'droppable' => $column->isDroppable(),
             'draggable' => $column->isDraggable(),
             'accepts' => $column->getAccepts(),
             'limit' => $column->getLimit(),
-            'total' => $column->getLimit() === null ? null : $this->columnQuery($column->getName())->count(),
+            'total' => $column->getLimit() === null ? null : ($totals[$column->getName()] ?? 0),
             'creatable' => $this->createAction !== null && $column->isDroppable() && $column->isCreatable(),
             'summary' => $this->getSummary($column->getName(), $search, $filters),
             ...($lanes === null ? [
@@ -681,11 +695,9 @@ class Board
             return $cards;
         }
 
-        foreach ($this->orderingFor($column) as [$attribute, $direction]) {
-            $query->orderBy($attribute, $direction);
-        }
+        $this->applyOrdering($query, $column);
 
-        // The partition is the lane as counts() sees it: a defined lane's value, or null
+        // The partition is the lane as laneCountsOf() sees it: a defined lane's value, or null
         // (the unassigned lane) for null and any other value.
         $attribute = $query->getGrammar()->wrap($query->qualifyColumn($this->laneAttribute));
         $known = array_values(array_filter(array_map(fn (Lane $lane) => $lane->getValue(), $lanes), fn (string $value) => $value !== Lane::UNASSIGNED));
@@ -693,7 +705,7 @@ class Board
 
         $byLane = [];
 
-        foreach ($query->orderBy($query->getModel()->getQualifiedKeyName())->groupLimit(max($wanted), $partition)->get() as $record) {
+        foreach ($query->groupLimit(max($wanted), $partition)->get() as $record) {
             unset($record->laravel_row);
             $value = $this->laneValue($record);
 
@@ -732,12 +744,9 @@ class Board
             $this->laneQuery($query, $lane);
         }
 
-        foreach ($this->orderingFor($column) as [$attribute, $direction]) {
-            $query->orderBy($attribute, $direction);
-        }
+        $this->applyOrdering($query, $column);
 
         return $query
-            ->orderBy($query->getModel()->getQualifiedKeyName())
             ->offset(max(0, $offset))
             ->limit(min(max($this->perColumn, $limit), $this->perColumn * 10))
             ->get()
@@ -749,12 +758,31 @@ class Board
     public function presentCard(Model $record): array
     {
         $card = $this->card ? ($this->card)($record) : Card::make()->title((string) $record->getKey());
-
-        return [
+        $card = [
             'id' => (string) $record->getKey(),
             ...($this->hasLanes() ? ['lane' => $this->laneValue($record)] : []),
             ...$card->toArray(),
         ];
+
+        // A badge names its icon; the SVG goes to the browser once per request, not per card.
+        foreach ($card['badges'] ?? [] as $badge) {
+            if (isset($badge['icon']) && ! array_key_exists($badge['icon'], $this->icons)) {
+                $this->icons[$badge['icon']] = \Filament\Support\generate_icon_html($badge['icon'])?->toHtml();
+            }
+        }
+
+        return $card;
+    }
+
+    /**
+     * The badge icons used by the cards presented in this request, as SVG by name, for
+     * the browser's icon map. Every answer that carries cards carries these too.
+     *
+     * @return array<string, string>
+     */
+    public function getIcons(): array
+    {
+        return array_filter($this->icons);
     }
 
     /* ------------------------------------------------------------------ writing */
@@ -798,6 +826,15 @@ class Board
             throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
         }
 
+        // The card's own rule (Card::locked()), re-read from the record: one card, so
+        // the card closure runs once here, never over the column. A drop that changes
+        // nothing (back into its own cell, no reordering) is answered as before.
+        $unchanged = $from === $to && $lane === null && (! $this->isReorderable() || ! $source->isDraggable());
+
+        if (! $unchanged && $this->card && ! ($this->card)($record)->isDraggable()) {
+            throw new MoveRejected(__('packstub-kanban::kanban.locked'));
+        }
+
         if ($from !== $to || $lane !== null) {
             if (! $source->isDraggable() || ! $target->isDroppable() || ($from !== $to && ! $target->accepting($from))) {
                 throw new MoveRejected(__('packstub-kanban::kanban.not_allowed_into', ['column' => $target->getLabel()]));
@@ -806,12 +843,33 @@ class Board
             if ($from !== $to && $this->isFull($target)) {
                 throw new MoveRejected(__('packstub-kanban::kanban.full', ['column' => $target->getLabel(), 'limit' => $target->getLimit()]));
             }
+        } elseif (! $this->isReorderable() || ! $source->isDraggable()) {
+            return $this->presentCard($record);
+        }
 
-            // A MoveRejected thrown here refuses with its message; anything else (a
-            // database error, a bug in the closure) propagates for the caller to report:
-            // its message is not for the user (see InteractsWithKanban::kanbanMove()).
-            // moveUsing() hears about a lane only when its closure takes a fourth parameter;
-            // otherwise the board saves the lane itself and calls it for a column change only.
+        // The move and the column's new order land together or not at all.
+        try {
+            $record->getConnection()->transaction(function () use ($record, $from, $to, $order, $lane) {
+                $this->saveMove($record, $from, $to, $order, $lane);
+            });
+        } finally {
+            // Saved or rolled back, the cached model no longer tells where the card is.
+            unset($this->records[(string) $id]);
+        }
+
+        return $this->presentCard($record->fresh() ?? $record);
+    }
+
+    /** @param  list<string>|null  $order */
+    protected function saveMove(Model $record, string $from, string $to, ?array $order, ?string $lane = null): void
+    {
+        if ($from !== $to || $lane !== null) {
+            // A MoveRejected thrown here refuses with its message (and rolls back);
+            // anything else (a database error, a bug in the closure) propagates for
+            // the caller to report: its message is not for the user (see
+            // InteractsWithKanban::kanbanMove()). moveUsing() hears about a lane only
+            // when its closure takes a fourth parameter; otherwise the board saves the
+            // lane itself and calls it for a column change only.
             $takesLane = $this->moveUsing && $this->hasLanes() && (new \ReflectionFunction($this->moveUsing))->getNumberOfParameters() >= 4;
 
             if ($this->moveUsing && ($takesLane || $from !== $to)) {
@@ -836,18 +894,20 @@ class Board
                 $record->save();
             }
 
-            CardMoved::dispatch($record, $from, $to, $this->key, $lane);
-        } elseif (! $this->isReorderable() || ! $source->isDraggable()) {
-            return $this->presentCard($record);
+            // Once the (outermost) transaction commits. The move is saved by then: a
+            // listener that throws is reported, it does not turn the move into a failure.
+            $record->getConnection()->afterCommit(function () use ($record, $from, $to, $lane) {
+                try {
+                    CardMoved::dispatch($record, $from, $to, $this->key, $lane);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            });
         }
 
         if ($this->isReorderable() && $order !== null) {
             $this->storeOrder($to, $order);
         }
-
-        unset($this->records[(string) $id]);
-
-        return $this->presentCard($record->fresh() ?? $record);
     }
 
     /* ------------------------------------------------------------------ internals */
@@ -906,26 +966,32 @@ class Board
     }
 
     /**
-     * Cards per column; with swimlanes, per column and lane (one grouped query either way).
+     * Cards per column in one grouped query.
      *
-     * @param  array<string, mixed>  $filters
-     * @return array<string, int>|array<string, array<string, int>>
+     * @return array<string, int>
      */
-    protected function counts(string $search, array $filters): array
+    protected function countsOf(Builder $query): array
     {
-        $query = $this->filteredQuery($search, $filters);
         $attribute = $this->qualifiedColumnAttribute($query);
 
-        if (! $this->hasLanes()) {
-            return $query->reorder()
-                ->toBase()
-                ->select($attribute.' as kanban_column', DB::raw('count(*) as kanban_count'))
-                ->groupBy($attribute)
-                ->pluck('kanban_count', 'kanban_column')
-                ->map(fn ($count) => (int) $count)
-                ->all();
-        }
+        return $query->reorder()
+            ->toBase()
+            ->select($attribute.' as kanban_column', DB::raw('count(*) as kanban_count'))
+            ->groupBy($attribute)
+            ->pluck('kanban_count', 'kanban_column')
+            ->map(fn ($count) => (int) $count)
+            ->all();
+    }
 
+    /**
+     * With swimlanes: cards per column and lane, in one grouped query. A value outside
+     * the lanes counts in the unassigned one.
+     *
+     * @return array<string, array<string, int>>
+     */
+    protected function laneCountsOf(Builder $query): array
+    {
+        $attribute = $this->qualifiedColumnAttribute($query);
         $laneAttribute = $query->qualifyColumn($this->laneAttribute);
         $known = array_map(fn (Lane $lane) => $lane->getValue(), $this->getLanes());
         $counts = [];
@@ -1026,34 +1092,103 @@ class Board
         return $this->getLane($value) === null ? Lane::UNASSIGNED : $value;
     }
 
-    /** @return list<array{0: string, 1: string}> */
-    protected function orderingFor(Column $column): array
+    /** The order of a column's cards: position (a null one last), the column's sort, then the key. */
+    protected function applyOrdering(Builder $query, Column $column): Builder
     {
         if ($this->orderAttribute) {
-            return [[$this->orderAttribute, 'asc'], ...array_filter([$column->getSort() ?? $this->sort])];
+            $position = $query->getGrammar()->wrap($query->qualifyColumn($this->orderAttribute));
+            $query->orderByRaw("case when {$position} is null then 1 else 0 end")->orderByRaw("{$position} asc");
         }
 
-        return array_values(array_filter([$column->getSort() ?? $this->sort]));
+        if ($sort = $column->getSort() ?? $this->sort) {
+            $query->orderBy(...$sort);
+        }
+
+        return $query->orderBy($query->getModel()->getQualifiedKeyName());
     }
 
-    /** @param  list<string>  $order */
-    protected function storeOrder(string $column, array $order): void
+    /**
+     * Renumber the column: the ids the browser sent (its loaded cards, top to bottom)
+     * get 1..n, every other card of the column follows in its current order. Only
+     * positions that change are written, and the rest of the column is never read
+     * whole: the cards beyond the loaded page are left alone when they already sit
+     * above n, shifted up together (one statement) when they collide, and the ones
+     * without a position are numbered after them (a few hundred per statement).
+     *
+     * @param  list<string>  $order
+     */
+    protected function storeOrder(string $columnName, array $order): void
     {
-        $query = $this->baseQuery();
+        if (! $column = $this->getColumn($columnName)) {
+            return;
+        }
 
-        $ids = $query
-            ->where($this->qualifiedColumnAttribute($query), $column)
-            ->whereKey($order)
-            ->pluck($query->getModel()->getQualifiedKeyName())
-            ->map(fn ($id) => (string) $id)
+        $query = $this->columnQuery($columnName);
+        $keyName = $query->getModel()->getQualifiedKeyName();
+        $position = $query->qualifyColumn($this->orderAttribute);
+        $update = $query->toBase()->reorder();
+        $numeric = in_array($query->getModel()->getKeyType(), ['int', 'integer'], true);
+
+        $current = $order === [] ? [] : (clone $update)
+            ->whereIn($keyName, array_values(array_unique(array_map('strval', $order))))
+            ->pluck($position, $keyName)
+            ->mapWithKeys(fn ($value, $id) => [(string) $id => $value === null ? null : (int) $value])
             ->all();
 
-        $position = 0;
+        $sent = [];
 
         foreach ($order as $id) {
-            if (in_array((string) $id, $ids, true)) {
-                $this->baseQuery()->whereKey($id)->toBase()->update([$this->orderAttribute => ++$position]);
+            if (array_key_exists($id = (string) $id, $current) && ! isset($sent[$id])) {
+                $sent[$id] = count($sent) + 1;
             }
+        }
+
+        $this->writePositions($update, $keyName, $numeric, array_filter($sent, fn (int $value, string $id) => $current[$id] !== $value, ARRAY_FILTER_USE_BOTH));
+
+        $tail = (clone $update)->whereNotIn($keyName, array_keys($sent));
+        $range = (clone $tail)->whereNotNull($position)
+            ->selectRaw('min('.$query->getGrammar()->wrap($position).') as kanban_low, max('.$query->getGrammar()->wrap($position).') as kanban_high')
+            ->first();
+
+        $shift = $range?->kanban_low === null ? 0 : max(0, count($sent) + 1 - (int) $range->kanban_low);
+
+        if ($shift > 0) {
+            (clone $tail)
+                ->whereNotNull($position)
+                ->update([$this->orderAttribute => DB::raw($query->getGrammar()->wrap($position)." + {$shift}")]);
+        }
+
+        $next = max(count($sent), $range?->kanban_high === null ? 0 : (int) $range->kanban_high + $shift);
+
+        $unnumbered = [];
+
+        foreach ($this->applyOrdering((clone $query)->whereNotIn($keyName, array_keys($sent))->whereNull($position), $column)->toBase()->pluck($keyName) as $id) {
+            $unnumbered[(string) $id] = ++$next;
+        }
+
+        $this->writePositions($update, $keyName, $numeric, $unnumbered);
+    }
+
+    /**
+     * Set positions by id, a CASE statement per few hundred cards.
+     *
+     * @param  array<string, int>  $positions
+     */
+    protected function writePositions(QueryBuilder $update, string $keyName, bool $numeric, array $positions): void
+    {
+        $connection = $update->getConnection();
+        $key = $update->getGrammar()->wrap($keyName);
+
+        foreach (array_chunk($positions, 500, preserve_keys: true) as $chunk) {
+            $cases = implode(' ', array_map(
+                fn (string $id, int $value) => 'when '.($numeric ? (int) $id : $connection->escape($id)).' then '.$value,
+                array_keys($chunk),
+                $chunk,
+            ));
+
+            (clone $update)
+                ->whereIn($keyName, array_map('strval', array_keys($chunk)))
+                ->update([$this->orderAttribute => DB::raw("case {$key} {$cases} end")]);
         }
     }
 

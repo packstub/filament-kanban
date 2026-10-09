@@ -82,7 +82,7 @@ it('keeps the state of a board without swimlanes as it was', function () {
 
     $state = laneBoard()->getState();
 
-    expect(array_keys($state[0]))->toBe(['name', 'label', 'color', 'collapsed', 'droppable', 'draggable', 'accepts', 'limit', 'total', 'creatable', 'summary', 'count', 'cards'])
+    expect(array_keys($state[0]))->toBe(['name', 'label', 'labelHtml', 'icon', 'description', 'color', 'collapsed', 'droppable', 'draggable', 'accepts', 'limit', 'total', 'creatable', 'summary', 'count', 'cards'])
         ->and(array_keys($state[0]['cards'][0]))->toBe(['id', 'title']);
 
     $config = Livewire::test(TaskBoard::class)->instance()->getKanbanConfig();
@@ -152,7 +152,7 @@ it('answers lanes, counts and lane pages over Livewire', function () {
         ->call('kanbanRefresh')
         ->assertReturned(fn ($result) => array_column($result['lanes'], 'value') === ['ana', 'dan'] && $result['columns'][0]['counts'] === ['ana' => 1, 'dan' => 1])
         ->call('kanbanMore', 'todo', 0, '', [], 'dan')
-        ->assertReturned(fn ($cards) => count($cards) === 1 && $cards[0]['lane'] === 'dan')
+        ->assertReturned(fn ($result) => count($result['cards']) === 1 && $result['cards'][0]['lane'] === 'dan')
         ->call('kanbanMove', (string) Task::firstWhere('title', 'Ana')->id, 'doing', null, '', [], 'dan')
         ->assertReturned(fn ($result) => $result['ok'] && $result['card']['lane'] === 'dan');
 

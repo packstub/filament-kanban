@@ -16,6 +16,7 @@ return [
     'missing' => 'This card is no longer on the board. Refresh to see the latest.',
     'not_allowed' => 'You cannot move this card.',
     'not_allowed_into' => 'Cards cannot be moved to :column from here.',
+    'locked' => 'This card cannot be moved.',
     'failed' => 'The move did not go through.',
     'offline' => 'Could not reach the server. The card is back where it was.',
     'card_menu' => 'Card actions',
