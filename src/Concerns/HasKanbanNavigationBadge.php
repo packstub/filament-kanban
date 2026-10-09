@@ -7,7 +7,8 @@ use Packstub\Kanban\Pages\KanbanResourcePage;
 
 /**
  * For a resource: its navigation badge is the number of cards on its board page
- * (the first KanbanResourcePage in getPages()), none when the board is empty.
+ * (the first KanbanResourcePage in getPages()), none when the board is empty. A user
+ * who may open the resource but not its board page gets the resource's own badge.
  * Filament puts the resource in the navigation, not its pages, so the badge lives here.
  */
 trait HasKanbanNavigationBadge
@@ -16,7 +17,7 @@ trait HasKanbanNavigationBadge
     {
         $page = static::getKanbanPage();
 
-        if ($page === null) {
+        if ($page === null || ! $page::canAccess()) {
             return parent::getNavigationBadge();
         }
 

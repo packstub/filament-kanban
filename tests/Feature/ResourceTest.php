@@ -159,6 +159,37 @@ it('leaves a resource\'s badge alone when it has no board page', function () {
         ->and($resource::getNavigationBadge())->toBeNull();
 });
 
+it('keeps the board\'s count from a user who cannot open the board page', function () {
+    $page = new class extends TaskBoardPage
+    {
+        public static function canAccess(array $parameters = []): bool
+        {
+            return false;
+        }
+    };
+
+    $resource = new class($page::class) extends TaskResource
+    {
+        public static string $page;
+
+        public function __construct(string $page)
+        {
+            self::$page = $page;
+        }
+
+        public static function getPages(): array
+        {
+            return ['index' => ListTasks::route('/'), 'kanban' => self::$page::route('/board')];
+        }
+    };
+
+    task('A');
+
+    expect($resource::getKanbanPage())->toBe($page::class)
+        ->and($page::getBoardCount())->toBe(1)
+        ->and($resource::getNavigationBadge())->toBeNull();
+});
+
 /** @return array<string, string|null> the main navigation's items, label => badge */
 function navigationBadges(): array
 {

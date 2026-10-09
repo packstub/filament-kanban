@@ -120,7 +120,7 @@ protected function getHeaderActions(): array
 
 The "Table" button is the board page's default `getHeaderActions()`, shown when the resource has an `index` page. Override the method to add to it (`[TableAction::make(), CreateAction::make()]`) or to drop it (`[]`). Outside a resource page, both actions take the resource explicitly: `KanbanAction::make()->resource(TaskResource::class)`.
 
-**The navigation badge.** The sidebar shows the resource, not its pages, so the badge goes on the resource. The `HasKanbanNavigationBadge` trait makes the resource's badge the number of cards the user may see on its board page (the first `KanbanResourcePage` in `getPages()`), counted in one grouped query over the visible columns; no badge when the board is empty:
+**The navigation badge.** The sidebar shows the resource, not its pages, so the badge goes on the resource. The `HasKanbanNavigationBadge` trait makes the resource's badge the number of cards the user may see on its board page (the first `KanbanResourcePage` in `getPages()`), counted in one grouped query over the visible columns; no badge when the board is empty, and the resource's own badge for a user who cannot open the board page:
 
 ```php
 use Packstub\Kanban\Concerns\HasKanbanNavigationBadge;
