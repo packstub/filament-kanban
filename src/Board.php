@@ -5,6 +5,7 @@ namespace Packstub\Kanban;
 use BackedEnum;
 use Closure;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -22,6 +23,12 @@ use Packstub\Kanban\Exceptions\MoveRejected;
 class Board
 {
     use Conditionable;
+
+    /** The most ids one selection (a bulk move, a bulk action) may carry. */
+    public const MAX_SELECTION = 500;
+
+    /** The most lanes derived from the data; the rest fold into the "Other" lane. */
+    public const MAX_DERIVED_LANES = 50;
 
     protected Builder|Closure|null $query = null;
 
@@ -78,6 +85,11 @@ class Board
 
     /** @var list<Action> */
     protected array $bulkActions = [];
+
+    protected bool|Closure|null $selectable = null;
+
+    /** @var array<string, bool> */
+    protected array $recordSets = [];
 
     public static function make(): static
     {
@@ -185,8 +197,8 @@ class Board
      * sees; any other exception is reported and the user sees "The move did not go
      * through." Default: set the column attribute and save.
      *
-     * With swimlanes, the lane the card was dropped in comes fourth (null when the
-     * browser sent none): the default save sets both attributes.
+     * With swimlanes, the lane the card was dropped in comes fourth (null for the
+     * unassigned lane, or when the move carried none): the default save sets both.
      *
      * @param  Closure(Model $record, string $to, string $from, ?string $lane): void  $callback
      */
@@ -228,7 +240,25 @@ class Board
      */
     public function bulkActions(array $actions): static
     {
+        foreach ($actions as $action) {
+            if ($action instanceof BulkAction) {
+                throw new \LogicException("The bulk action [{$action->getName()}] is a table action (Filament\\Actions\\BulkAction): on a board use Packstub\\Kanban\\Actions\\BulkAction, which gets the selected cards as \$records.");
+            }
+        }
+
         $this->bulkActions = array_values($actions);
+
+        return $this;
+    }
+
+    /**
+     * Let users select cards (Ctrl/⌘-click, Shift-click, the checkbox) and move
+     * them together. On by default once the board has bulk actions; turn it on
+     * without them for "Move to…" alone, or off to keep Ctrl/⌘-click opening the card.
+     */
+    public function selectable(bool|Closure $condition = true): static
+    {
+        $this->selectable = $condition;
 
         return $this;
     }
@@ -318,6 +348,15 @@ class Board
         return $this->laneAttribute !== null;
     }
 
+    public function isSelectable(): bool
+    {
+        if ($this->selectable === null) {
+            return $this->bulkActions !== [];
+        }
+
+        return (bool) ($this->selectable instanceof Closure ? app()->call($this->selectable) : $this->selectable);
+    }
+
     public function getLaneAttribute(): ?string
     {
         return $this->laneAttribute;
@@ -343,7 +382,7 @@ class Board
         $lanes = $this->lanes instanceof Closure ? app()->call($this->lanes) : $this->lanes;
 
         if ($lanes === null) {
-            $lanes = array_map(fn ($value) => Lane::make($value), $this->laneValues());
+            $lanes = $this->derivedLanes();
         } else {
             $lanes = array_values($lanes);
             $values = array_map(fn (Lane $lane) => $lane->getValue(), $lanes);
@@ -456,9 +495,34 @@ class Board
      */
     public function findRecords(array $ids): EloquentCollection
     {
-        $ids = array_values(array_unique(array_map('strval', array_filter($ids, fn ($id) => ! blank($id)))));
+        $ids = static::selectionIds($ids);
 
         return $ids === [] ? new EloquentCollection : $this->baseQuery()->whereKey($ids)->get();
+    }
+
+    /** Whether any of these ids is still on the board (one exists() per set of ids, per request). */
+    public function hasRecords(array $ids): bool
+    {
+        $ids = static::selectionIds($ids);
+
+        if ($ids === []) {
+            return false;
+        }
+
+        return $this->recordSets[implode(',', $ids)] ??= $this->baseQuery()->whereKey($ids)->exists();
+    }
+
+    /**
+     * The ids a selection sent, cleaned: scalars only, as strings, unique, at most MAX_SELECTION.
+     *
+     * @param  array<mixed>  $ids
+     * @return list<string>
+     */
+    public static function selectionIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('strval', array_filter($ids, fn ($id) => is_scalar($id) && ! blank($id)))));
+
+        return array_slice($ids, 0, static::MAX_SELECTION);
     }
 
     /** Whether a new card may be created in this column now: visible, droppable, creatable and not full. */
@@ -666,7 +730,9 @@ class Board
             // database error, a bug in the closure) propagates for the caller to report:
             // its message is not for the user (see InteractsWithKanban::kanbanMove()).
             if ($this->moveUsing) {
-                $this->hasLanes() ? ($this->moveUsing)($record, $to, $from, $lane) : ($this->moveUsing)($record, $to, $from);
+                $this->hasLanes()
+                    ? ($this->moveUsing)($record, $to, $from, $lane === Lane::UNASSIGNED ? null : $lane)
+                    : ($this->moveUsing)($record, $to, $from);
             } else {
                 $record->setAttribute($this->columnAttribute, $to);
 
@@ -793,6 +859,43 @@ class Board
         $known = array_values(array_filter($known, fn (string $value) => $value !== Lane::UNASSIGNED));
 
         return $query->where(fn (Builder $q) => $q->whereNull($attribute)->when($known !== [], fn (Builder $q) => $q->orWhereNotIn($attribute, $known)));
+    }
+
+    /**
+     * One lane per value on the board, in first-seen order; a null value is the
+     * "Unassigned" lane, which an empty board still shows so there is somewhere to
+     * drop. Past MAX_DERIVED_LANES the rest fold into that lane, labelled "Other".
+     * A backed enum cast on the attribute gives the labels and colours.
+     *
+     * @return list<Lane>
+     */
+    protected function derivedLanes(): array
+    {
+        $values = $this->laneValues();
+        $capped = count($values) > static::MAX_DERIVED_LANES;
+        $values = array_slice($values, 0, static::MAX_DERIVED_LANES);
+        $enum = $this->laneEnum();
+
+        $lanes = array_map(function (string $value) use ($enum) {
+            $case = $enum && $value !== Lane::UNASSIGNED ? $enum::tryFrom(is_numeric($value) ? (int) $value : $value) : null;
+
+            return $case ? Lane::fromCase($case) : Lane::make($value);
+        }, $values);
+
+        if ($capped || $values === []) {
+            $lanes = array_values(array_filter($lanes, fn (Lane $lane) => ! $lane->isUnassigned()));
+            $lanes[] = Lane::make(Lane::UNASSIGNED)->when($capped, fn (Lane $lane) => $lane->label(fn () => __('packstub-kanban::kanban.other')));
+        }
+
+        return $lanes;
+    }
+
+    /** @return class-string<BackedEnum>|null the enum the lane attribute is cast to, if any */
+    protected function laneEnum(): ?string
+    {
+        $cast = $this->baseQueryWithoutColumns()->getModel()->getCasts()[$this->laneAttribute] ?? null;
+
+        return is_string($cast) && enum_exists($cast) && is_subclass_of($cast, BackedEnum::class) ? $cast : null;
     }
 
     /**

@@ -28,4 +28,7 @@ return [
     'selected' => ':count selectate',
     'clear' => 'Renunță',
     'bulk_refused' => ':count carduri nu au putut fi mutate.',
+    'bulk_refused_one' => 'Un card nu a putut fi mutat.',
+    'bulk_limit' => 'Selectează cel mult :max carduri odată.',
+    'other' => 'Altele',
 ];

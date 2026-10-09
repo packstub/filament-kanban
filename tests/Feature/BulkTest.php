@@ -1,8 +1,10 @@
 <?php
 
+use Filament\Actions\DeleteBulkAction;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
+use Packstub\Kanban\Actions\BulkAction;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Tests\Fixtures\PlainBoard;
 use Packstub\Kanban\Tests\Fixtures\Task;
@@ -93,4 +95,52 @@ it('hides a bulk action while nothing selected is on the board', function () {
 it('offers the bulk actions to the browser, on components with Filament\'s action system only', function () {
     expect(array_column(Livewire::test(TaskBoard::class)->instance()->getKanbanConfig()['bulkActions'], 'name'))->toBe(['bumpAll'])
         ->and(Livewire::test(PlainBoard::class)->instance()->getKanbanConfig()['bulkActions'])->toBe([]);
+});
+
+it('ignores ids that are not scalars and caps a selection, without an error', function () {
+    $a = task('A');
+
+    Livewire::test(TaskBoard::class)
+        ->call('kanbanMoveMany', [[1], ['x' => 2], null, '', (string) $a->id], 'doing')
+        ->assertReturned(fn ($result) => array_column($result['moved'], 'id') === [(string) $a->id] && $result['refused'] === [])
+        ->call('kanbanMoveMany', array_map('strval', range(1, Board::MAX_SELECTION + 1)), 'doing')
+        ->assertReturned(fn ($result) => $result['ok'] === false && $result['moved'] === [] && str_contains($result['message'], (string) Board::MAX_SELECTION))
+        ->assertActionHidden('bumpAll', ['kanbanRecords' => [[1], 'nope']])
+        ->callAction('bumpAll', arguments: ['kanbanRecords' => [[$a->id], (string) $a->id]])
+        ->assertHasNoErrors();
+
+    expect(Board::selectionIds([[1], 2, '2', ' ', null, 3.0]))->toBe(['2', '3'])
+        ->and(Board::selectionIds(range(1, Board::MAX_SELECTION + 10)))->toHaveCount(Board::MAX_SELECTION)
+        ->and($a->fresh())->toMatchArray(['status' => 'doing', 'priority' => 1]);
+});
+
+it('refuses Filament\'s table bulk actions on the board and names the plugin\'s', function () {
+    expect(fn () => Board::make()->bulkActions([DeleteBulkAction::make()]))->toThrow(LogicException::class, 'Packstub\Kanban\Actions\BulkAction')
+        ->and(fn () => Board::make()->bulkActions([Filament\Actions\BulkAction::make('x')]))->toThrow(LogicException::class);
+});
+
+it('tells a bulk action asked for its records off a board', function () {
+    $action = BulkAction::make('loose');
+
+    expect(fn () => $action->getSelectedRecords())->toThrow(LogicException::class, 'Board::bulkActions()')
+        ->and(fn () => $action->getSelectedRecordsQuery())->toThrow(LogicException::class, 'Board::bulkActions()');
+});
+
+it('offers selection with bulk actions, or when asked for, and not otherwise', function () {
+    expect(Livewire::test(TaskBoard::class)->instance()->getKanbanConfig()['selectable'])->toBeTrue()
+        ->and(Livewire::test(PlainBoard::class)->instance()->getKanbanConfig()['selectable'])->toBeFalse()
+        ->and(Board::make()->isSelectable())->toBeFalse()
+        ->and(Board::make()->selectable()->isSelectable())->toBeTrue()
+        ->and(Board::make()->bulkActions([BulkAction::make('x')])->selectable(false)->isSelectable())->toBeFalse()
+        ->and(Board::make()->selectable(fn () => true)->isSelectable())->toBeTrue();
+});
+
+it('keeps the four languages in step', function () {
+    $keys = array_keys(require __DIR__.'/../../resources/lang/en/kanban.php');
+
+    foreach (['ro', 'ru', 'de'] as $lang) {
+        expect(array_keys(require __DIR__."/../../resources/lang/{$lang}/kanban.php"))->toBe($keys);
+    }
+
+    expect($keys)->toContain('bulk_refused_one', 'bulk_limit', 'other');
 });

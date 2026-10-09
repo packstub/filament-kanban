@@ -47,9 +47,9 @@ export default function packstubKanban(config) {
         refreshSeq: 0,
         pending: 0,
 
-        /** Whether cards can be selected at all: there is something to do with a selection. */
+        /** Whether cards can be selected: the board has bulk actions, or asked for it with selectable(). */
         get hasSelection() {
-            return this.bulkActions.length > 0 || this.columns.some((c) => c.draggable)
+            return !! config.selectable
         },
 
         /** The rows of every column: the lanes, or one nameless lane without swimlanes. */
@@ -231,8 +231,8 @@ export default function packstubKanban(config) {
                         if (column) column.summary = summary
                     }
 
-                    if (from !== to) {
-                        this.$dispatch('kanban-card-moved', { id, from, to, card: result.card })
+                    if (from !== to || (laned && lane !== fromLane)) {
+                        this.$dispatch('kanban-card-moved', { id, from, to, ...(laned ? { lane } : {}), card: result.card })
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)
@@ -250,7 +250,13 @@ export default function packstubKanban(config) {
 
         canDrop(from, to, fromLane = undefined, toLane = undefined) {
             if (from === to) {
-                return config.reorderable || (!! this.lanes && fromLane !== toLane)
+                // A lane change inside the column is a move: the column must let cards out and in, as on the server.
+                if (this.lanes && fromLane !== toLane) {
+                    const column = this.findColumn(from)
+                    return !! (column && column.draggable && column.droppable)
+                }
+
+                return config.reorderable
             }
 
             const source = this.findColumn(from)
@@ -334,9 +340,17 @@ export default function packstubKanban(config) {
             this.lastSelected = null
         },
 
-        /** Where every selected card may go: the columns each one's source column allows. */
+        // A card that left the board (deleted by an action, filtered out, dropped by a poll) leaves the selection too.
+        pruneSelection() {
+            if (! this.selected.length) return
+            const loaded = new Set(this.columns.flatMap((c) => c.cards.map((x) => x.id)))
+            this.selected = this.selected.filter((id) => loaded.has(id))
+            if (this.lastSelected && ! loaded.has(this.lastSelected)) this.lastSelected = null
+        },
+
+        /** Where every selected card may go: the columns each one's source column allows (locked cards stay). */
         bulkTargets() {
-            const sources = [...new Set(this.selectedCards().map(([column]) => column.name))]
+            const sources = [...new Set(this.movableSelection().map(([column]) => column.name))]
 
             return sources.length
                 ? this.columns.filter((c) => ! this.hidden.includes(c.name) && sources.every((from) => from !== c.name && this.canDrop(from, c.name)))
@@ -354,9 +368,14 @@ export default function packstubKanban(config) {
             return pairs
         },
 
+        /** The selected cards a bulk move may take: not pending, and not locked (`draggable: false` on the card). */
+        movableSelection() {
+            return this.selectedCards().filter(([, card]) => ! card._pending && card.draggable !== false)
+        },
+
         runBulkAction(name) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecords: [...this.selected] })
+            this.$wire.mountAction(name, { kanbanRecords: this.selectedCards().map(([, card]) => card.id) })
         },
 
         // Every selected card moves at once; the ones the server refuses come back, with one notification.
@@ -364,7 +383,7 @@ export default function packstubKanban(config) {
             const target = this.findColumn(to)
             const moves = []
 
-            for (const [source, card] of this.selectedCards()) {
+            for (const [source, card] of this.movableSelection()) {
                 if (source.name === to) continue
                 const at = source.cards.indexOf(card)
                 source.cards.splice(at, 1)
@@ -404,9 +423,9 @@ export default function packstubKanban(config) {
 
             this.$wire.kanbanMoveMany(moves.map((m) => m.card.id), to, this.search, this.active, null)
                 .then((result) => {
-                    if (! result) {
+                    if (! result || (! result.ok && result.message)) {
                         moves.forEach(undo)
-                        return this.notify(this.t.failed, 'danger')
+                        return this.notify(result?.message || this.t.failed, 'danger')
                     }
 
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
@@ -430,7 +449,8 @@ export default function packstubKanban(config) {
 
                     if (refused.size) {
                         const reasons = [...new Set(refused.values())].slice(0, 3).join(' ')
-                        this.notify(this.t.bulk_refused.replace(':count', refused.size) + ' ' + reasons, 'danger')
+                        const title = refused.size === 1 ? this.t.bulk_refused_one : this.t.bulk_refused.replace(':count', refused.size)
+                        this.notify(title + ' ' + reasons, 'danger')
                     }
                 })
                 .catch(() => {
@@ -499,6 +519,8 @@ export default function packstubKanban(config) {
                         column.summary = fresh.summary
                     }
                 }
+
+                this.pruneSelection()
             })
         },
 

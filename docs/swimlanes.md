@@ -14,7 +14,9 @@ With only the attribute, the lanes are the attribute's distinct values on the bo
 ->swimlanes('priority')
 ```
 
-Derived lanes follow the data: a lane with no cards left disappears on the next refresh, and the first card with a new value adds one.
+Derived lanes follow the data: a lane with no cards left disappears on the next refresh, and the first card with a new value adds one. An empty board shows the "Unassigned" lane alone, so there is somewhere to drop. When the attribute is cast to a backed enum on the model, the labels and colours come from its `HasLabel` and `HasColor`.
+
+Derive lanes from an attribute with a handful of values (a priority, a type, a team). Every lane costs a query per column that holds cards, so a lane per customer on a six-column board is hundreds of queries; past 50 derived values the rest fold into an "Other" lane. For many values, define the lanes you want to show.
 
 ## Defined lanes
 
@@ -42,18 +44,15 @@ A card dropped in another lane gets that lane's value as well as the column's: t
 
 Every column rule applies unchanged. A WIP limit counts the whole column across lanes; the column header's count is the column's, each lane header shows its own.
 
-`moveUsing()` receives the lane fourth, when the board has swimlanes:
+`moveUsing()` receives the lane fourth, when the board has swimlanes: the lane's value, or `null` for the unassigned lane, which is what the default save writes.
 
 ```php
 ->moveUsing(function (Task $task, string $to, string $from, ?string $lane) {
-    $task->update([
-        'status' => $to,
-        'assignee_id' => $lane === null ? $task->assignee_id : ($lane === '' ? null : $lane),
-    ]);
+    $task->update(['status' => $to, 'assignee_id' => $lane]);
 })
 ```
 
-`$lane` is `null` when the move did not carry one (a "Move to…" from the card's menu keeps the card's lane).
+A "Move to…" from the card's menu, or a bulk move, keeps the card's lane; the closure then gets `null` too, so a closure that must tell the two apart reads the record's current value. `CardMoved::$lane` keeps the wire value (`''` for the unassigned lane, `null` when the move carried none).
 
 ## Folding and paging
 

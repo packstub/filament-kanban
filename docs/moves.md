@@ -26,13 +26,13 @@ use Packstub\Kanban\Exceptions\MoveRejected;
 })
 ```
 
-With [swimlanes](swimlanes.md) the closure receives the lane fourth: `fn (Task $task, string $to, string $from, ?string $lane)`.
+With [swimlanes](swimlanes.md) the closure receives the lane fourth: `fn (Task $task, string $to, string $from, ?string $lane)`, `null` for the unassigned lane (what the default save writes) and for a move that carried none.
 
 Throw `Packstub\Kanban\Exceptions\MoveRejected` to refuse with a message you want shown as-is. Any other exception (the database's, a bug in the closure) is reported to your exception handler and the user sees "The move did not go through.": an exception's text, a query with its bindings say, belongs in the log, not in a notification. `Board::move()` itself lets such an exception propagate, so a call of your own sees it.
 
 ## Moving several cards
 
-"Move to…" on the [selection bar](actions.md#bulk-selection) moves every selected card in one request (`kanbanMoveMany`). Each card goes through the same rules and `moveUsing()` as a single move, in its own save: the cards that went through stay moved and dispatch `CardMoved`, the refused ones slide back in the browser with one notification listing the reasons. The call as a whole is not a transaction; a refusal never undoes the other cards.
+"Move to…" on the [selection bar](actions.md#bulk-selection) moves every selected card in one request (`kanbanMoveMany`, at most 500 cards). Each card goes through the same rules and `moveUsing()` as a single move, in its own save: the cards that went through stay moved and dispatch `CardMoved`, the refused ones slide back in the browser with one notification listing the reasons. The call as a whole is not a transaction; a refusal never undoes the other cards.
 
 With [swimlanes](swimlanes.md), a bulk move keeps each card's lane.
 
@@ -68,7 +68,7 @@ protected function kanbanMoved(string $id, string $to, array $card): void
 }
 ```
 
-In the browser, a `kanban-card-moved` event bubbles up from the board with `{ id, from, to, card }`:
+In the browser, a `kanban-card-moved` event bubbles up from the board with `{ id, from, to, card }` (and `lane` with swimlanes, also for a drop in another lane of the same column):
 
 ```html
 <div x-on:kanban-card-moved.window="console.log($event.detail)"></div>

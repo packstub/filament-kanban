@@ -9,6 +9,7 @@ use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Lane;
 use Packstub\Kanban\Tests\Fixtures\Priority;
+use Packstub\Kanban\Tests\Fixtures\RankedTask;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
@@ -155,4 +156,48 @@ it('answers lanes, counts and lane pages over Livewire', function () {
 
     // Derived lanes follow the data: nobody is left in Ana's lane.
     expect(array_column(Livewire::test($component::class)->instance()->getKanbanConfig()['lanes'], 'value'))->toBe(['dan']);
+});
+
+it('shows one unassigned lane on an empty board with derived lanes, so there is somewhere to drop', function () {
+    expect(array_map(fn (Lane $l) => $l->toArray(), laneBoard()->swimlanes('assignee')->getLanes()))->toBe([
+        ['value' => '', 'label' => 'Unassigned', 'color' => null, 'collapsed' => false],
+    ]);
+});
+
+it('labels lanes derived from an enum-cast attribute with the enum', function () {
+    task('High', 'todo', ['priority' => 9]);
+    task('Low', 'todo', ['priority' => 1]);
+
+    $board = laneBoard()->query(fn () => RankedTask::query())->card(fn (RankedTask $task) => Card::make()->title($task->title))->swimlanes('priority');
+
+    expect(array_map(fn (Lane $l) => [$l->getValue(), $l->getLabel(), $l->getColor()], $board->getLanes()))->toBe([['9', 'High priority', 'red'], ['1', 'Low priority', 'gray']])
+        ->and($board->getState()[0]['cards'][0])->toMatchArray(['lane' => '9', 'title' => 'High']);
+});
+
+it('caps derived lanes and folds the rest into an "Other" lane', function () {
+    foreach (range(1, Board::MAX_DERIVED_LANES + 2) as $i) {
+        task("Task {$i}", 'todo', ['assignee' => sprintf('user-%03d', $i), 'priority' => 1000 - $i]);
+    }
+
+    $board = laneBoard()->swimlanes('assignee');
+    $lanes = $board->getLanes();
+
+    expect($lanes)->toHaveCount(Board::MAX_DERIVED_LANES + 1)
+        ->and($lanes[0]->getValue())->toBe('user-001')
+        ->and(end($lanes)->toArray())->toMatchArray(['value' => '', 'label' => 'Other'])
+        ->and($board->getState()[0]['counts'][''])->toBe(2)
+        ->and(array_column($board->getCards('todo', lane: ''), 'title'))->toBe(['Task 51', 'Task 52']);
+});
+
+it('passes null to moveUsing() for the unassigned lane, as the default save writes', function () {
+    $task = task('Build', 'todo', ['assignee' => 'ana']);
+    task('Loose', 'doing');
+    $seen = 'unset';
+
+    laneBoard()->swimlanes('assignee')->moveUsing(function (Task $record, string $to, string $from, ?string $lane) use (&$seen) {
+        $seen = $lane;
+        $record->update(['status' => $to, 'assignee' => $lane]);
+    })->move((string) $task->id, 'doing', null, '');
+
+    expect($seen)->toBeNull()->and($task->fresh()->assignee)->toBeNull();
 });

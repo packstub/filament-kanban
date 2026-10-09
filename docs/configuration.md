@@ -104,6 +104,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `cardActions(array)` | `[]` | Filament actions in each card's menu. |
 | `cardAction(?string)` | off | The card action a click runs. |
 | `bulkActions(array)` | `[]` | Actions on the selection bar; `BulkAction` gets `$records`. |
+| `selectable(bool\|Closure)` | with bulk actions | Let users select cards and move them together. |
 | `swimlanes(?string, array\|Closure\|class-string\|null)` | off | Rows by an attribute: `Lane`s, an enum, or derived from the data. |
 | `createAction(?Action)` | off | A "+" on each droppable column. |
 | `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from, ?string $lane)`. |

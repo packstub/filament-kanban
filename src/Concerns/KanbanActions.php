@@ -43,7 +43,7 @@ trait KanbanActions
                 $action->model($board->getModel());
             }
 
-            static::kanbanChainHidden($action, fn () => $board->findRecords($ids())->isEmpty());
+            static::kanbanChainHidden($action, fn () => ! $board->hasRecords($ids()));
             $this->kanbanRefreshAfter($action);
 
             $this->cacheAction($action);

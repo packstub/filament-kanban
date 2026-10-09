@@ -71,7 +71,7 @@ The "+" is left out of columns that are hidden, not droppable, marked `creatable
 
 ## Bulk selection
 
-Ctrl/⌘-click selects a card (and deselects it), Shift-click selects every card between the last selected one and this one in the same column, and a checkbox on each card does the same on hover and on touch screens. While cards are selected a bar takes the toolbar's place: the count, "Move to…", the board's bulk actions and Clear (or Escape). A selected card is not opened on click.
+Selection is on once the board has `bulkActions()`, or with `->selectable()` for "Move to…" alone (`->selectable(false)` turns it off, and Ctrl/⌘-click opens the card's URL in a new tab as before). Ctrl/⌘-click selects a card (and deselects it), Shift-click selects every card between the last selected one and this one in the same column, and a checkbox on each card does the same on hover and on touch screens. While cards are selected a bar takes the toolbar's place: the count, "Move to…", the board's bulk actions and Clear (or Escape). A selected card is not opened on click. A card that leaves the board (deleted by an action, filtered out, gone on a poll) leaves the selection too.
 
 `bulkActions()` lists the actions on that bar. A `Packstub\Kanban\Actions\BulkAction` is a Filament action over the selection, the way a table's `BulkAction` is over its selected rows: inject `$records` (an Eloquent collection) or `Builder $query`.
 
@@ -91,7 +91,9 @@ use Packstub\Kanban\Actions\BulkAction;
 ])
 ```
 
-The records are loaded through the board's `query()`, so a selection never reaches a record the user cannot see on the board; ids outside it are dropped, and the action is hidden when nothing selected is on the board. The board reloads once the action has run. A plain `Action` works on the bar too, with the selected ids in `$arguments['kanbanRecords']`.
+Mind the import: `Packstub\Kanban\Actions\BulkAction`, not Filament's `Filament\Actions\BulkAction` (or `DeleteBulkAction`), which read a table's selection and have no place on a board; the board refuses them with a clear error.
+
+The records are loaded through the board's `query()`, so a selection never reaches a record the user cannot see on the board; ids outside it are dropped (a selection carries at most 500), and the action is hidden when nothing selected is on the board. The board reloads once the action has run. A plain `Action` works on the bar too, with the selected ids in `$arguments['kanbanRecords']`.
 
 "Move to…" offers the columns every selected card may go to, by the same rules as a drag; see [Moving several cards](moves.md#moving-several-cards).
 

@@ -47,19 +47,23 @@ class Lane
      */
     public static function fromEnum(string $enum): array
     {
-        return array_map(function (BackedEnum $case) {
-            $lane = static::make($case->value);
+        return array_map(fn (BackedEnum $case) => static::fromCase($case), $enum::cases());
+    }
 
-            if ($case instanceof HasLabel) {
-                $lane->label(fn () => $case->getLabel());
-            }
+    /** A lane for one enum case, with its label and colour when the enum implements HasLabel and HasColor. */
+    public static function fromCase(BackedEnum $case): static
+    {
+        $lane = static::make($case->value);
 
-            if ($case instanceof HasColor) {
-                $lane->color(fn () => Column::colorFromFilament($case->getColor()));
-            }
+        if ($case instanceof HasLabel) {
+            $lane->label(fn () => $case->getLabel());
+        }
 
-            return $lane;
-        }, $enum::cases());
+        if ($case instanceof HasColor) {
+            $lane->color(fn () => Column::colorFromFilament($case->getColor()));
+        }
+
+        return $lane;
     }
 
     public function label(string|Closure|null $label): static

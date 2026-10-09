@@ -96,7 +96,7 @@ trait InteractsWithKanban
      *
      * @param  list<string>  $ids
      * @param  array<string, mixed>  $filters
-     * @return array{ok: bool, moved: list<array<string, mixed>>, refused: list<array{id: string, message: string}>, summaries: array<string, string|null>}
+     * @return array{ok: bool, moved: list<array<string, mixed>>, refused: list<array{id: string, message: string}>, summaries: array<string, string|null>, message?: string}
      */
     #[Renderless]
     public function kanbanMoveMany(array $ids, string $to, string $search = '', array $filters = [], ?string $lane = null): array
@@ -106,7 +106,11 @@ trait InteractsWithKanban
         $refused = [];
         $columns = [$to];
 
-        foreach (array_unique(array_map('strval', $ids)) as $id) {
+        if (count(Board::selectionIds($ids)) === Board::MAX_SELECTION && count($ids) > Board::MAX_SELECTION) {
+            return ['ok' => false, 'moved' => [], 'refused' => [], 'summaries' => [], 'message' => __('packstub-kanban::kanban.bulk_limit', ['max' => Board::MAX_SELECTION])];
+        }
+
+        foreach (Board::selectionIds($ids) as $id) {
             $from = $board->findRecord($id)?->getAttribute($board->getColumnAttribute());
             $columns[] = (string) ($from instanceof \BackedEnum ? $from->value : $from);
 
@@ -158,6 +162,7 @@ trait InteractsWithKanban
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
             'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
+            'selectable' => $board->isSelectable(),
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
             'cardActions' => array_map(fn ($action) => [

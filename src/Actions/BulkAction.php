@@ -48,7 +48,7 @@ class BulkAction extends Action
 
     public function getSelectedRecords(): EloquentCollection|Collection|LazyCollection
     {
-        $records = $this->kanbanRecords ? ($this->kanbanRecords)() : new EloquentCollection;
+        $records = $this->kanbanRecords ? ($this->kanbanRecords)() : throw $this->offBoard();
 
         $this->totalSelectedRecordsCount = $records->count();
         $this->successfulSelectedRecordsCount = $this->totalSelectedRecordsCount;
@@ -58,8 +58,11 @@ class BulkAction extends Action
 
     public function getSelectedRecordsQuery(): Builder
     {
-        return $this->kanbanRecordsQuery
-            ? ($this->kanbanRecordsQuery)()
-            : throw new LogicException("The bulk action [{$this->getName()}] is not on a board: register it with Board::bulkActions().");
+        return $this->kanbanRecordsQuery ? ($this->kanbanRecordsQuery)() : throw $this->offBoard();
+    }
+
+    protected function offBoard(): LogicException
+    {
+        return new LogicException("The bulk action [{$this->getName()}] is not on a board: register it with Board::bulkActions().");
     }
 }
