@@ -11,7 +11,11 @@ use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Livewire\Component;
+use Packstub\Kanban\Actions\BulkAction;
+use Packstub\Kanban\Actions\ColumnAction;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
@@ -44,6 +48,11 @@ class TaskBoard extends Component implements HasActions, HasSchemas
             ])
             ->columns(array_map(fn (string $name) => Column::make($name)
                 ->visible(static::$visible === null || in_array($name, static::$visible, true))
+                ->actions([
+                    ColumnAction::make('archive')
+                        ->label(fn (Column $column) => 'Archive '.$column->getLabel())
+                        ->action(fn (Builder $query) => $query->update(['status' => 'archived'])),
+                ])
                 ->when($name === 'doing', fn (Column $c) => $c->accepts(['todo'])->limit(static::$doingLimit))
                 ->when($name === 'done', fn (Column $c) => $c->accepts(['doing'])->droppable(fn () => static::$canShip)->creatable(false)),
                 ['todo', 'doing', 'done']))
@@ -54,6 +63,10 @@ class TaskBoard extends Component implements HasActions, HasSchemas
                 Action::make('bump')->action(fn (Task $record) => $record->increment('priority')),
             ])
             ->cardAction('edit')
+            ->bulkActions([
+                BulkAction::make('bumpAll')->action(fn (Collection $records) => $records->each->increment('priority')),
+                BulkAction::make('bumpQuery')->action(fn (BulkAction $action) => $action->getSelectedRecordsQuery()->increment('priority')),
+            ])
             ->createAction(CreateAction::make()->schema([TextInput::make('title')->required()]))
             ->card(fn (Task $task) => Card::make()->title($task->title)->meta([$task->project?->name])->url('/tasks/'.$task->id));
     }
