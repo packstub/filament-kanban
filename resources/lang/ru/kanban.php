@@ -21,10 +21,10 @@ return [
     'card_menu' => 'Действия с карточкой',
     'limit' => 'Лимит: :limit карточек',
     'full' => 'Колонка «:column» заполнена (лимит :limit).',
-    'column_label' => ':label, карточек: :count',
+    'column_label' => ':label, :count карточка|:label, :count карточки|:label, :count карточек',
     'moved_to' => 'Перемещено в :column',
-    'loaded_more' => 'Загружено ещё карточек: :count',
-    'matches_count' => 'Подходящих карточек: :count',
+    'loaded_more' => 'Загружена ещё :count карточка|Загружено ещё :count карточки|Загружено ещё :count карточек',
+    'matches_count' => 'Подходит :count карточка|Подходят :count карточки|Подходят :count карточек',
     'compact' => 'Компактно',
     'comfortable' => 'Просторно',
 ];

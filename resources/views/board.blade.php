@@ -57,8 +57,8 @@
 
         <div class="pk-spacer"></div>
 
-        {{-- A fixed label with the pressed state: "Compact, pressed" while compact, "Compact, not pressed" otherwise. --}}
-        <button type="button" class="pk-icon-btn pk-density-btn" x-on:click="toggleDensity()" :title="tr('compact')" :aria-label="tr('compact')" :aria-pressed="density === 'compact'">
+        {{-- A fixed label with the pressed state: "Compact, pressed" while compact, "Compact, not pressed" otherwise; the tooltip names what a click gives. --}}
+        <button type="button" class="pk-icon-btn pk-density-btn" x-on:click="toggleDensity()" :title="tr(density === 'compact' ? 'comfortable' : 'compact')" :aria-label="tr('compact')" :aria-pressed="density === 'compact'">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 5.25h12.5M3.75 8.5h12.5M3.75 11.75h12.5M3.75 15h12.5"/></svg>
         </button>
 
@@ -146,7 +146,7 @@
                     </button>
                 </header>
 
-                <ol class="pk-cards" role="list" :data-column="column.name" x-init="bindSortable($el, column)" x-on:keydown="keys($event, column)">
+                <ol class="pk-cards" role="list" :data-column="column.name" x-init="bindSortable($el, column)" x-on:keydown="keys($event, column)" x-on:contextmenu="contextMenu($event)">
                     <template x-for="card in column.cards" :key="card.id">
                         <li
                             class="pk-card"

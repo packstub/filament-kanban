@@ -21,10 +21,10 @@ return [
     'card_menu' => 'Acțiuni card',
     'limit' => 'Limită: :limit carduri',
     'full' => ':column este plină (limita :limit).',
-    'column_label' => ':label, :count carduri',
+    'column_label' => ':label, :count card|:label, :count carduri|:label, :count de carduri',
     'moved_to' => 'Mutat în :column',
-    'loaded_more' => 'Încă :count carduri încărcate',
-    'matches_count' => ':count carduri se potrivesc',
+    'loaded_more' => 'Încă :count card încărcat|Încă :count carduri încărcate|Încă :count de carduri încărcate',
+    'matches_count' => ':count card se potrivește|:count carduri se potrivesc|:count de carduri se potrivesc',
     'compact' => 'Compact',
     'comfortable' => 'Confortabil',
 ];

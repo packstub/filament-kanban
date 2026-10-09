@@ -21,10 +21,10 @@ return [
     'card_menu' => 'Card actions',
     'limit' => 'Limit: :limit cards',
     'full' => ':column is full (limit :limit).',
-    'column_label' => ':label, :count cards',
+    'column_label' => ':label, :count card|:label, :count cards',
     'moved_to' => 'Moved to :column',
-    'loaded_more' => 'Loaded :count more cards',
-    'matches_count' => ':count cards match',
+    'loaded_more' => 'Loaded :count more card|Loaded :count more cards',
+    'matches_count' => ':count card matches|:count cards match',
     'compact' => 'Compact',
     'comfortable' => 'Comfortable',
 ];

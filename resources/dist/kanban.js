@@ -20,6 +20,30 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// One of a translation's `a|b|c` forms for a count, as Laravel's trans_choice() picks it:
+// `{n}` and `[a,b]` (`*` open) prefixes first, then the locale's plural rules.
+function choose(text, count, locale) {
+    const range = /^\s*(?:\{(\d+)\}|\[(\d+|\*),\s*(\d+|\*)\])\s*/
+    const forms = text.split('|')
+
+    for (const form of forms) {
+        const m = form.match(range)
+        if (m && (m[1] !== undefined ? count === +m[1] : (m[2] === '*' || count >= +m[2]) && (m[3] === '*' || count <= +m[3]))) {
+            return form.replace(range, '')
+        }
+    }
+
+    const plain = forms.filter((form) => ! range.test(form))
+    let index = count === 1 ? 0 : 1
+    try {
+        const rules = new Intl.PluralRules(locale || document.documentElement.lang || undefined)
+        const order = ['zero', 'one', 'two', 'few', 'many', 'other'].filter((c) => rules.resolvedOptions().pluralCategories.includes(c))
+        index = order.indexOf(rules.select(count))
+    } catch (e) {}
+
+    return (plain[Math.min(Math.max(index, 0), plain.length - 1)] ?? text).trim()
+}
+
 export default function packstubKanban(config) {
     return {
         columns: config.columns,
@@ -36,6 +60,7 @@ export default function packstubKanban(config) {
         menu: null,
         sidebar: false,
         density: config.density || 'comfortable',
+        clickAction: !! config.cardAction && (config.cardActions || []).some((a) => a.name === config.cardAction),
         densityChosen: false,
         narrow: false, // below 64rem: one column at a time, picked from a tab bar
         tab: null,
@@ -77,7 +102,8 @@ export default function packstubKanban(config) {
                 this.narrow = event.matches
                 this.$nextTick(this.fit)
             }
-            this.media?.addEventListener?.('change', this.onMedia)
+            // Safari before 14 has addListener() only.
+            this.media?.addEventListener ? this.media.addEventListener('change', this.onMedia) : this.media?.addListener?.(this.onMedia)
 
             // Pick up other people's changes, but never while a card is in the air.
             if (config.poll) {
@@ -92,7 +118,7 @@ export default function packstubKanban(config) {
         destroy() {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
-            this.media?.removeEventListener?.('change', this.onMedia)
+            this.media?.removeEventListener ? this.media.removeEventListener('change', this.onMedia) : this.media?.removeListener?.(this.onMedia)
             clearInterval(this.poller)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
@@ -162,7 +188,7 @@ export default function packstubKanban(config) {
             const ref = cards(event.from)[event.oldDraggableIndex] ?? null
             ref ? event.from.insertBefore(event.item, ref) : event.from.appendChild(event.item)
 
-            this.move(id, from, to, event.newDraggableIndex)
+            this.move(id, from, to, event.newDraggableIndex, { pointer: true })
         },
 
         moveTo(id, from, to) {
@@ -170,7 +196,7 @@ export default function packstubKanban(config) {
             this.$nextTick(() => this.$refs.board.querySelector(`.pk-cards[data-column="${CSS.escape(to)}"]`)?.scrollTo({ top: 0, behavior: 'smooth' }))
         },
 
-        move(id, from, to, index) {
+        move(id, from, to, index, options = {}) {
             const source = this.findColumn(from)
             const target = this.findColumn(to)
             const at = source.cards.findIndex((c) => c.id === id)
@@ -200,9 +226,14 @@ export default function packstubKanban(config) {
             // was in the card when the move started and has not gone elsewhere since (the
             // menu closing leaves it on <body>): a late refusal never pulls focus from a
             // search box or a modal.
+            // A mouse drop leaves focus alone (the link took it on mousedown, not the user).
             const inCard = () => document.activeElement?.closest?.('.pk-card')?.dataset.id === id
-            const focused = inCard()
-            const keepFocus = () => focused && (inCard() || document.activeElement === document.body || ! document.activeElement)
+            const onTarget = () => {
+                const el = document.activeElement
+                return !! el?.matches?.('.pk-tab, .pk-fold') && (el.dataset.column ?? el.closest('.pk-col')?.dataset.column) === to
+            }
+            const focused = ! options.pointer && inCard()
+            const keepFocus = () => focused && (inCard() || onTarget() || document.activeElement === document.body || ! document.activeElement)
             if (focused) this.refocus(id, to)
 
             const undo = (message) => {
@@ -279,7 +310,7 @@ export default function packstubKanban(config) {
 
         // Whether a click on the card runs the click action (a card with a url is a link anyway).
         clickable(card) {
-            return !! config.cardAction && this.actionsFor(card).some((a) => a.name === config.cardAction)
+            return this.clickAction && (! card.actions || card.actions.includes(config.cardAction))
         },
 
         open(event, card) {
@@ -346,8 +377,18 @@ export default function packstubKanban(config) {
                 const card = column.cards.find((c) => c.id === item.dataset.id)
                 if (card && this.hasMenu(card, column)) {
                     event.preventDefault()
+                    // The browser's own menu follows as a separate contextmenu event (on keyup in Chrome on Windows).
+                    this.menuKey = Date.now()
                     this.openMenu(card)
                 }
+            }
+        },
+
+        // The contextmenu event a menu key (or Shift+F10) fires after the board opened its own menu.
+        contextMenu(event) {
+            if (this.menuKey && Date.now() - this.menuKey < 1000) {
+                event.preventDefault()
+                this.menuKey = 0
             }
         },
 
@@ -383,15 +424,20 @@ export default function packstubKanban(config) {
             setTimeout(() => { live.textContent = text }, 50)
         },
 
-        // A string with its placeholders filled; a missing key (a published translation
-        // of a locale the package does not ship) gives the key, never an error.
+        // A string with its placeholders filled, as Laravel does: every occurrence, longer
+        // names first, never a value's own text (one pass). With a count, `a|b` forms are
+        // chosen as trans_choice() would. A missing key (a published translation of a locale
+        // the package does not ship) gives the key, never an error.
         tr(key, replacements = {}) {
             let text = typeof this.t?.[key] === 'string' ? this.t[key] : key
-            for (const [name, value] of Object.entries(replacements)) {
-                text = text.replace(':' + name, () => String(value)) // a function: "$&" in a label stays as it is
+            if (text.includes('|') && typeof replacements.count === 'number') {
+                text = choose(text, replacements.count, config.locale)
             }
 
-            return text
+            const names = Object.keys(replacements).sort((a, b) => b.length - a.length)
+            if (! names.length) return text
+
+            return text.replace(new RegExp(':(' + names.join('|') + ')', 'g'), (_, name) => String(replacements[name]))
         },
 
         columnLabel(column) {

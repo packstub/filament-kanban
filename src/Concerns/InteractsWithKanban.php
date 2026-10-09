@@ -116,6 +116,7 @@ trait InteractsWithKanban
             'cardAction' => $board->getCardAction(),
             'createAction' => $actions && ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
             'i18n' => __('packstub-kanban::kanban'),
+            'locale' => app()->getLocale(),
         ];
     }
 }
