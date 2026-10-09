@@ -26,7 +26,15 @@ use Packstub\Kanban\Exceptions\MoveRejected;
 })
 ```
 
+With [swimlanes](swimlanes.md) the closure receives the lane fourth: `fn (Task $task, string $to, string $from, ?string $lane)`.
+
 Throw `Packstub\Kanban\Exceptions\MoveRejected` to refuse with a message you want shown as-is. Any other exception (the database's, a bug in the closure) is reported to your exception handler and the user sees "The move did not go through.": an exception's text, a query with its bindings say, belongs in the log, not in a notification. `Board::move()` itself lets such an exception propagate, so a call of your own sees it.
+
+## Moving several cards
+
+"Move to…" on the [selection bar](actions.md#bulk-selection) moves every selected card in one request (`kanbanMoveMany`). Each card goes through the same rules and `moveUsing()` as a single move, in its own save: the cards that went through stay moved and dispatch `CardMoved`, the refused ones slide back in the browser with one notification listing the reasons. The call as a whole is not a transaction; a refusal never undoes the other cards.
+
+With [swimlanes](swimlanes.md), a bulk move keeps each card's lane.
 
 ## Reordering
 
@@ -49,7 +57,7 @@ Event::listen(function (CardMoved $event) {
 });
 ```
 
-`$event->board` is the board's `key()` (the page class by default), handy when several boards share a model.
+`$event->board` is the board's `key()` (the page class by default), handy when several boards share a model. With swimlanes, `$event->lane` is the lane the card was dropped in (`''` for the unassigned lane, `null` when the move carried none), and a drop in another lane of the same column dispatches the event too, with `$from === $to`.
 
 On the page itself, override `kanbanMoved()` to react in the component:
 

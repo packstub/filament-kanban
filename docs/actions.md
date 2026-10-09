@@ -44,7 +44,7 @@ Your own `hidden()`, `visible()`, `authorize()` and `disabled()` rules keep work
 ->cardAction('edit')
 ```
 
-A click opens the slide-over; Ctrl/⌘-click and middle-click still open the card's URL in a new tab when it has one. A drag never counts as a click.
+A click opens the slide-over; a middle click still opens the card's URL in a new tab when it has one (Ctrl/⌘- and Shift-click [select](#bulk-selection) the card). A drag never counts as a click.
 
 ## Create a card in a column
 
@@ -68,6 +68,32 @@ use Filament\Actions\CreateAction;
 The model is taken from the board's query unless you set one with `->model()`. The column attribute must be fillable on the model (or add it yourself in `->using()`). `mutateDataUsing()` still runs first, before the board adds the column.
 
 The "+" is left out of columns that are hidden, not droppable, marked `creatable(false)`, or full (a [WIP limit](columns.md#wip-limits)), and the server refuses a create into any of them.
+
+## Bulk selection
+
+Ctrl/⌘-click selects a card (and deselects it), Shift-click selects every card between the last selected one and this one in the same column, and a checkbox on each card does the same on hover and on touch screens. While cards are selected a bar takes the toolbar's place: the count, "Move to…", the board's bulk actions and Clear (or Escape). A selected card is not opened on click.
+
+`bulkActions()` lists the actions on that bar. A `Packstub\Kanban\Actions\BulkAction` is a Filament action over the selection, the way a table's `BulkAction` is over its selected rows: inject `$records` (an Eloquent collection) or `Builder $query`.
+
+```php
+use Illuminate\Database\Eloquent\Collection;
+use Packstub\Kanban\Actions\BulkAction;
+
+->bulkActions([
+    BulkAction::make('assign')
+        ->label('Assign to me')
+        ->icon(Heroicon::OutlinedUser)
+        ->action(fn (Collection $records) => $records->each->update(['owner_id' => auth()->id()])),
+    BulkAction::make('delete')
+        ->color('danger')
+        ->requiresConfirmation()
+        ->action(fn (Collection $records) => $records->each->delete()),
+])
+```
+
+The records are loaded through the board's `query()`, so a selection never reaches a record the user cannot see on the board; ids outside it are dropped, and the action is hidden when nothing selected is on the board. The board reloads once the action has run. A plain `Action` works on the bar too, with the selected ids in `$arguments['kanbanRecords']`.
+
+"Move to…" offers the columns every selected card may go to, by the same rules as a drag; see [Moving several cards](moves.md#moving-several-cards).
 
 ## Header actions
 

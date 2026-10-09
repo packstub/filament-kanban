@@ -4,6 +4,9 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
+- Swimlanes: `swimlanes('assignee_id', [...])` draws the board as rows by a second attribute, with `Lane::make()->label()->color()->collapsed()`, `Lane::fromEnum()`, or lanes derived from the data (first-seen order, an "Unassigned" lane for null). A drop in another lane sets the lane attribute too; `moveUsing()` receives the lane fourth, `CardMoved` carries `$lane`, counts and paging are per column and lane, WIP limits and summaries stay per column. Lanes fold and the fold is remembered with the other view preferences.
+- Bulk selection: Ctrl/⌘-click, Shift-click or the checkbox on a card selects it; a selection bar replaces the toolbar with the count, "Move to…" (one `kanbanMoveMany` call, refused cards slide back with one notification), the board's `bulkActions([BulkAction::make(...)])` with the selection as `$records` loaded through the board's query, and Clear (Escape).
+- `kanbanMove()` and `kanbanMore()` take a trailing `$lane`; `Board::move()` and `Board::getCards()` too. Nothing was removed.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.
 - Fixed: a horizontal swipe over a column scrolls the board; the card list no longer captures the gesture (it scrolls vertically only, without overscroll containment), so a short column also lets the page scroll past it.
