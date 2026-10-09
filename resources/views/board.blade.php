@@ -48,15 +48,49 @@
         @endif
 
         <template x-for="filter in filters" :key="filter.name">
-            <label class="pk-filter" :class="{ 'pk-filter-on': active[filter.name] }">
-                <span x-text="filter.label"></span>
-                <select x-model="active[filter.name]" x-on:change="refresh()">
-                    <option value="" x-text="t.all"></option>
-                    <template x-for="option in filter.options" :key="option.value">
-                        <option :value="option.value" x-text="option.label"></option>
-                    </template>
-                </select>
-            </label>
+            <div class="pk-menu-wrap">
+                {{-- one of the options --}}
+                <template x-if="filter.type === 'select'">
+                    <label class="pk-filter" :class="{ 'pk-filter-on': isActive(filter) }">
+                        <span x-text="filter.label"></span>
+                        <select x-model="active[filter.name]" x-on:change="refresh()">
+                            <option value="" x-text="t.all"></option>
+                            <template x-for="option in filter.options" :key="option.value">
+                                <option :value="option.value" x-text="option.label"></option>
+                            </template>
+                        </select>
+                    </label>
+                </template>
+
+                {{-- several options at once: a popover of checkboxes, the count on the button --}}
+                <template x-if="filter.type === 'multiple'">
+                    <div>
+                        <button type="button" class="pk-filter pk-filter-btn" :class="{ 'pk-filter-on': isActive(filter) }" x-on:click.stop="openFilter(filter, $el)" :aria-expanded="menu === 'filter:' + filter.name">
+                            <span x-text="filter.label"></span>
+                            <strong x-text="isActive(filter) ? active[filter.name].length : t.all"></strong>
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+                        </button>
+                        <div class="pk-menu pk-menu-start pk-filter-menu" x-show="menu === 'filter:' + filter.name" x-cloak x-transition.opacity.duration.100ms x-on:click.outside="menu = null">
+                            <template x-for="option in filter.options" :key="option.value">
+                                <label class="pk-menu-item">
+                                    <input type="checkbox" :checked="active[filter.name].includes(option.value)" x-on:change="toggleOption(filter, option.value)">
+                                    <span x-text="option.label"></span>
+                                </label>
+                            </template>
+                            <div class="pk-menu-sep" x-show="isActive(filter)"></div>
+                            <button type="button" class="pk-menu-item" x-show="isActive(filter)" x-on:click="clearFilter(filter)" x-text="t.clear"></button>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- on or off --}}
+                <template x-if="filter.type === 'toggle'">
+                    <button type="button" class="pk-filter pk-filter-btn pk-filter-toggle" :class="{ 'pk-filter-on': isActive(filter) }" :aria-pressed="isActive(filter)" x-on:click="toggleFilter(filter)">
+                        <svg x-show="isActive(filter)" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="m5 10.5 3.5 3.5L15 7"/></svg>
+                        <span x-text="filter.label"></span>
+                    </button>
+                </template>
+            </div>
         </template>
 
         <div class="pk-spacer"></div>

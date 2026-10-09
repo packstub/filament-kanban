@@ -97,6 +97,17 @@ div.pk { visibility: visible; animation: none; }
 .dark .pk-filter select option { background: var(--gray-900); }
 .pk-filter-on { border-color: var(--pk-ring); }
 
+/* multiple() opens a popover of checkboxes; toggle() is an on/off chip */
+.pk-filter-btn:hover { border-color: var(--pk-card-hover); }
+.pk-filter-btn:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-filter-btn strong { font-weight: 500; color: var(--pk-text); font-variant-numeric: tabular-nums; }
+.pk-filter-btn svg { width: 0.875rem; height: 0.875rem; color: var(--pk-muted); }
+.pk-filter-toggle.pk-filter-on { background: color-mix(in oklab, var(--pk-ring) 10%, var(--pk-card-bg)); }
+.pk-filter-toggle.pk-filter-on span, .pk-filter-toggle.pk-filter-on svg { color: var(--pk-text); }
+.pk-menu-start { left: 0; }
+.pk-menu-start.pk-menu-end { left: auto; } /* flipped by openFilter() near the right edge */
+.pk-filter-menu { max-height: min(18rem, 60vh); overflow-y: auto; scrollbar-width: thin; }
+
 /* ------------------------------------------------------------------ menus */
 
 .pk-menu-wrap { position: relative; }

@@ -60,6 +60,8 @@ class Board
 
     protected bool $focusMode = true;
 
+    protected bool $persistInUrl = true;
+
     protected ?string $key = null;
 
     /** @var list<Action> */
@@ -235,6 +237,14 @@ class Board
     public function focusMode(bool $condition = true): static
     {
         $this->focusMode = $condition;
+
+        return $this;
+    }
+
+    /** Keep the search and the active filters in the page's query string, so a filtered board can be bookmarked, shared and reloaded. */
+    public function persistInUrl(bool $condition = true): static
+    {
+        $this->persistInUrl = $condition;
 
         return $this;
     }
@@ -511,6 +521,11 @@ class Board
     public function hasFocusMode(): bool
     {
         return $this->focusMode;
+    }
+
+    public function persistsInUrl(): bool
+    {
+        return $this->persistInUrl;
     }
 
     public function getKey(): ?string

@@ -6,6 +6,7 @@ use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
+use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
 
@@ -175,6 +176,30 @@ trait InteractsWithKanban
     protected function kanbanMoved(string $id, string $to, array $card): void {}
 
     /**
+     * The search and filters in the page's query string, checked as any value from the
+     * browser is: only the board's own filters, only values among their options.
+     *
+     * @return array{search: string, filters: array<string, string|list<string>|bool>}
+     */
+    protected function kanbanUrlState(Board $board): array
+    {
+        $search = request()->query('search');
+        $sent = request()->query('filters');
+        $filters = [];
+
+        foreach ($board->getFilters() as $filter) {
+            if (is_array($sent) && array_key_exists($filter->getName(), $sent)) {
+                $filters[$filter->getName()] = $filter->state($sent[$filter->getName()]);
+            }
+        }
+
+        return [
+            'search' => $board->isSearchable() && is_string($search) ? trim($search) : '',
+            'filters' => $filters,
+        ];
+    }
+
+    /**
      * What the browser needs to draw an action in a menu.
      *
      * @return array{name: string, label: mixed, icon: string|null, color: string|null}
@@ -260,18 +285,29 @@ trait InteractsWithKanban
         // Card and create actions need Filament's action system on the component.
         $actions = $this instanceof HasActions;
 
+        // A toggle without query() fails here, on the first render, not when a user clicks it.
+        foreach ($board->getFilters() as $filter) {
+            $filter->assertUsable();
+        }
+
+        // The page itself (not a Livewire update) is drawn as its URL says: a bookmarked or
+        // shared board shows filtered from the start, with no second request.
+        $initial = $board->persistsInUrl() && ! Livewire::isLivewireRequest() ? $this->kanbanUrlState($board) : null;
+
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $this->kanbanDrawn ? null : $this->kanbanColumnsWithActions($board->getState()),
+            'columns' => $this->kanbanDrawn ? null : $this->kanbanColumnsWithActions($board->getState($initial['search'] ?? '', $initial['filters'] ?? [])),
+            'initial' => $initial,
             'icons' => $board->getIcons(),
             'lanes' => $board->hasLanes() ? $this->kanbanLanes($board) : null,
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
-            'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
+            'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'type' => $f->getType(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
             'selectable' => $board->isSelectable(),
             'maxSelection' => Board::MAX_SELECTION,
             'focus' => $board->hasFocusMode(),
+            'url' => $board->persistsInUrl(),
             'poll' => $board->getPoll(),
             'density' => $board->getDensity(),
             'undo' => $board->getUndo(),

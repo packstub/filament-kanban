@@ -3,6 +3,7 @@
 return [
     'search' => 'Поиск',
     'all' => 'Все',
+    'clear' => 'Сбросить',
     'columns' => 'Колонки',
     'show_sidebar' => 'Показать меню',
     'hide_sidebar' => 'Скрыть меню',

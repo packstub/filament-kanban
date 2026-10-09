@@ -20,6 +20,9 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// A filter's "nothing chosen", by type.
+const blankFor = (filter) => filter.type === 'multiple' ? [] : filter.type === 'toggle' ? false : ''
+
 // One of a translation's `a|b|c` forms for a count, as Laravel's trans_choice() picks it:
 // `{n}` and `[a,b]` (`*` open) prefixes first, then the locale's plural rules.
 function choose(text, count, locale) {
@@ -67,7 +70,8 @@ export default function packstubKanban(config) {
         createAction: config.createAction,
         t: config.i18n,
         search: '',
-        active: Object.fromEntries(config.filters.map((f) => [f.name, ''])),
+        // '' for a select, [] for a multiple, false for a toggle
+        active: Object.fromEntries(config.filters.map((f) => [f.name, blankFor(f)])),
         hidden: [],
         folded: {},
         foldedLanes: {},
@@ -102,9 +106,16 @@ export default function packstubKanban(config) {
         init() {
             this.restore()
 
-            // Drawn again on a later request (the server sends no state then): ask for it
-            // instead of drawing an empty board.
-            if (! this.drawn) {
+            // A bookmarked or shared board: the page was drawn as its URL says (config.initial).
+            if (config.initial) {
+                this.search = config.initial.search || ''
+                Object.assign(this.active, config.initial.filters || {})
+            }
+
+            // Drawn again on a later request (the server sends no state then), or first drawn
+            // on one (lazy, deferred: unfiltered): load it, as the URL says.
+            const fromUrl = ! config.initial && config.url && this.readUrl()
+            if (! this.drawn || fromUrl) {
                 this.refresh()
             }
 
@@ -863,6 +874,10 @@ export default function packstubKanban(config) {
                 ? Object.fromEntries(this.lanes.map((l) => [l.value, this.loadedIn(c, l)]))
                 : c.cards.length])) : {}
 
+            if (! background) {
+                this.writeUrl()
+            }
+
             this.$wire.kanbanRefresh(this.search, this.active, loaded, ! this.drawn).catch(() => null).then((result) => {
                 if (seq !== this.refreshSeq) {
                     return
@@ -921,6 +936,129 @@ export default function packstubKanban(config) {
 
                 this.pruneSelection()
             })
+        },
+
+        isActive(filter) {
+            const value = this.active[filter.name]
+
+            return filter.type === 'multiple' ? value.length > 0 : filter.type === 'toggle' ? value === true : value !== ''
+        },
+
+        // A few quick clicks are one request (as typing in the search is).
+        toggleOption(filter, value) {
+            const current = this.active[filter.name]
+            this.active[filter.name] = current.includes(value) ? current.filter((v) => v !== value) : [...current, value]
+            this.queueRefresh()
+        },
+
+        toggleFilter(filter) {
+            this.active[filter.name] = ! this.active[filter.name]
+            this.queueRefresh()
+        },
+
+        clearFilter(filter) {
+            this.active[filter.name] = blankFor(filter)
+            this.queueRefresh()
+        },
+
+        // The filter popover opens rightwards, or leftwards when that would leave the screen.
+        openFilter(filter, button) {
+            const key = 'filter:' + filter.name
+            this.menu = this.menu === key ? null : key
+            if (! this.menu) return
+
+            this.$nextTick(() => {
+                const popover = button.parentElement.querySelector('.pk-filter-menu')
+                popover?.classList.remove('pk-menu-end')
+                if (popover && popover.getBoundingClientRect().right > document.documentElement.clientWidth - 8) {
+                    popover.classList.add('pk-menu-end')
+                }
+            })
+        },
+
+        /* ------------------------------------------------------------ the URL */
+
+        // `?search=…&filters[owner_id][0]=1&filters[owner_id][1]=2&filters[mine]=1`: only the
+        // filters the board defines are read, only values among their options are kept
+        // (the server checks them again), and a toggle is on for 1, true, on or yes.
+        readUrl() {
+            let found = false
+
+            try {
+                const params = new URLSearchParams(window.location.search)
+                const search = (params.get('search') || '').trim()
+
+                if (search && config.searchable) {
+                    this.search = search
+                    found = true
+                }
+
+                const sent = {}
+                for (const [key, value] of params) {
+                    const m = key.match(/^filters\[([^\]]+)\](?:\[\d*\])?$/)
+                    if (m && value !== '') (sent[m[1]] ??= []).push(value)
+                }
+
+                for (const filter of this.filters) {
+                    const values = sent[filter.name] || []
+                    const offered = filter.options.map((o) => o.value)
+                    const known = [...new Set(values.filter((v) => offered.includes(v)))]
+
+                    if (filter.type === 'multiple' && known.length) {
+                        this.active[filter.name] = known
+                        found = true
+                    } else if (filter.type === 'toggle' && values.length && ['1', 'true', 'on', 'yes'].includes(values[0].toLowerCase())) {
+                        this.active[filter.name] = true
+                        found = true
+                    } else if (filter.type === 'select' && known.length) {
+                        this.active[filter.name] = known[0]
+                        found = true
+                    }
+                }
+            } catch (e) {}
+
+            return found
+        },
+
+        // Mirrors the state into the query string in place (no history entry); an empty
+        // search or filter is removed, so an untouched board keeps a clean URL. Lists use
+        // indexed keys, and the brackets stay readable: Livewire's own URL sync (a #[Url]
+        // property elsewhere on the page) rewrites the query string and would keep only
+        // the last of repeated `[]` keys.
+        writeUrl() {
+            if (! config.url) return
+
+            try {
+                // Only what this board owns is replaced: other parameters (another component's
+                // `filters[...]`, a `search` the board does not use) stay as they are.
+                const names = new Set(this.filters.map((f) => f.name))
+                const owned = (key) => (key === 'search' && config.searchable) || names.has(key.match(/^filters\[([^\]]+)\](?:\[\d*\])?$/)?.[1])
+                const url = new URL(window.location.href)
+                const pairs = [...url.searchParams].filter(([key]) => ! owned(key))
+
+                const search = this.search.trim()
+                if (search && config.searchable) pairs.push(['search', search])
+
+                for (const filter of this.filters) {
+                    const value = this.active[filter.name]
+
+                    if (filter.type === 'multiple') {
+                        value.forEach((v, i) => pairs.push([`filters[${filter.name}][${i}]`, v]))
+                    } else if (filter.type === 'toggle') {
+                        if (value === true) pairs.push([`filters[${filter.name}]`, '1'])
+                    } else if (value !== '') {
+                        pairs.push([`filters[${filter.name}]`, value])
+                    }
+                }
+
+                const encode = (s) => encodeURIComponent(s).replace(/%5B/gi, '[').replace(/%5D/gi, ']').replace(/%20/g, '+')
+                const query = pairs.map(([k, v]) => encode(k) + '=' + encode(v)).join('&')
+                const next = url.pathname + (query ? '?' + query : '') + url.hash
+
+                if (next !== window.location.pathname + window.location.search + window.location.hash) {
+                    window.history.replaceState(window.history.state, '', next)
+                }
+            } catch (e) {}
         },
 
         // "Load more" loads itself when it scrolls into view; the button stays for keyboards.

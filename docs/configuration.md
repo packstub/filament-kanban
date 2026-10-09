@@ -14,6 +14,7 @@ public function kanban(Board $board): Board
         ->reorderable('sort')                              // manual order, stored as integers
         ->searchable(['reference', 'company', 'owner.name'])
         ->filters([Filter::make('owner_id')->options(fn () => User::pluck('name', 'id')->all())])
+        ->persistInUrl(false)                              // leave the search and filters out of the URL
         ->summarize(fn (Builder $query) => Number::currency($query->sum('amount'), 'USD'))
         ->cardActions([EditAction::make()->schema([...]), DeleteAction::make()])
         ->cardAction('edit')                               // a click opens the edit modal
@@ -39,7 +40,7 @@ Without `searchable()` the search box is not shown.
 
 ## Filters
 
-A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer.
+A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer. The closure gets the value as a string, the option's key as the browser sends it (`"3"` for `User::pluck('name', 'id')`). Options given as a closure are resolved once per request: when the page draws the toolbar, and on a later refresh only once a value is set.
 
 ```php
 Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
@@ -50,6 +51,35 @@ Filter::make('due')->options(['overdue' => 'Overdue', 'week' => 'Due this week']
         'week' => $query->whereBetween('due_at', [now(), now()->endOfWeek()]),
     }),
 ```
+
+### Several at once
+
+`multiple()` turns the select into a popover of checkboxes, with the number of chosen options on the button. The default narrows with `whereIn(<name>, <values>)`; a `query()` closure gets the chosen values as a list of strings, in the options' order. A value outside the options is dropped on its own, the others still apply.
+
+```php
+Filter::make('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
+
+Filter::make('tags')->multiple()->options(Tag::pluck('name', 'id')->all())
+    ->query(fn (Builder $query, array $values) => $query->whereHas('tags', fn ($q) => $q->whereKey($values))),
+```
+
+### On or off
+
+`toggle()` is a single chip with the filter's label and no options: "Overdue", "Assigned to me". There is no default query, so `query()` is required; it gets `true` when the chip is on and is not called at all when it is off.
+
+```php
+Filter::make('mine')->label('Assigned to me')->toggle()
+    ->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
+
+Filter::make('overdue')->toggle()
+    ->query(fn (Builder $query) => $query->where('due_at', '<', now())),
+```
+
+## Search and filters in the URL
+
+The search and the active filters are kept in the page's query string (`?search=acme&filters[owner_id][0]=3&filters[owner_id][1]=7&filters[mine]=1`), replaced in place as they change, so a filtered board can be bookmarked, shared and reloaded; an untouched board keeps a clean URL. The URL is trusted no more than the browser is: a filter the board does not define is ignored, a value outside the options is dropped in the browser and on the server. The page is drawn filtered from the start, with no second request; a board drawn later (lazy, deferred) reads the URL in the browser and refreshes once. `persistInUrl(false)` leaves the URL alone.
+
+The keys are the same for every board, so one URL-persisted board per page: with two boards on a page, or a page that uses `?search=` for something else, `persistInUrl(false)` on the others. A board only rewrites its own keys (`search` when it is searchable, `filters[...]` for the filters it defines) and leaves every other parameter alone.
 
 ## Paging
 
@@ -151,7 +181,8 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `sortBy(string, string = 'asc')` | key order | Default order in every column. |
 | `reorderable(string = 'sort')` | off | Manual order inside a column. |
 | `searchable(array)` | off | Attributes the server searches. |
-| `filters(array)` | `[]` | Toolbar selects. |
+| `filters(array)` | `[]` | `Filter`s in the toolbar. |
+| `persistInUrl(bool)` | `true` | Keep the search and filters in the query string. |
 | `summarize(?Closure)` | off | `fn (Builder $query, Column $column): ?string`. |
 | `cardActions(array)` | `[]` | Filament actions in each card's menu. |
 | `cardAction(?string)` | off | The card action a click runs. |
@@ -180,3 +211,14 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 ### Card
 
 `make()`, `eyebrow()`, `title()`, `aside()`, `description()`, `badge()`, `meta()`, `due()`, `progress()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`, `locked()`, `draggable()`. See [Cards](cards.md).
+
+### Filter
+
+| Method | Default | |
+| --- | --- | --- |
+| `make(string $name)` | required | The attribute the default query narrows, and the key in the URL. |
+| `label(string\|Closure\|null)` | from the name | `owner_id` reads "Owner". |
+| `options(array\|Closure)` | `[]` | `[value => label]`; the only values the server accepts. |
+| `query(Closure)` | `where` / `whereIn` | `fn (Builder $query, string\|array\|true $value)`: a string, a list of strings for `multiple()`; required for `toggle()`. |
+| `multiple(bool = true)` | `false` | Several options at once; the query gets a list. |
+| `toggle(bool = true)` | `false` | An on/off chip without options; the query gets `true`. |

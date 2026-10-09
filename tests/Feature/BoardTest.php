@@ -125,6 +125,100 @@ it('applies filters and ignores values that are not offered', function () {
         ->and($board->getFilters()[0]->getLabel())->toBe('Project');
 });
 
+it('ignores a list sent to a select filter', function () {
+    $acme = project('Acme');
+    task('A', 'todo', ['project_id' => $acme->id]);
+    task('B');
+
+    $board = board()->filters([Filter::make('project_id')->options(fn () => [$acme->id => 'Acme'])]);
+
+    expect(array_column($board->getCards('todo', filters: ['project_id' => [$acme->id]]), 'title'))->toBe(['A', 'B']);
+});
+
+it('applies a multiple filter with whereIn and drops the values it does not offer one by one', function () {
+    $acme = project('Acme');
+    $globex = project('Globex');
+    $initech = project('Initech');
+    task('A', 'todo', ['project_id' => $acme->id]);
+    task('B', 'todo', ['project_id' => $globex->id]);
+    task('C', 'todo', ['project_id' => $initech->id]);
+    task('D');
+
+    $filter = Filter::make('project_id')->multiple()->options(fn () => [$acme->id => 'Acme', $globex->id => 'Globex']);
+    $board = board()->filters([$filter]);
+
+    expect($filter->getType())->toBe('multiple')
+        ->and(array_column($board->getCards('todo', filters: ['project_id' => [(string) $acme->id, $globex->id]]), 'title'))->toBe(['A', 'B'])
+        ->and(array_column($board->getCards('todo', filters: ['project_id' => [$acme->id, $initech->id, 999, '', ['nested']]]), 'title'))->toBe(['A'])
+        ->and(array_column($board->getCards('todo', filters: ['project_id' => [$initech->id]]), 'title'))->toBe(['A', 'B', 'C', 'D'])
+        ->and(array_column($board->getCards('todo', filters: ['project_id' => $acme->id]), 'title'))->toBe(['A']) // a single value is a list of one
+        ->and(array_column($board->getCards('todo', filters: ['project_id' => []]), 'title'))->toBe(['A', 'B', 'C', 'D']);
+
+    $received = null;
+    $board->filters([Filter::make('project_id')->multiple()->options([$acme->id => 'Acme', $globex->id => 'Globex'])->query(function (Builder $query, array $values) use (&$received) {
+        $received = $values;
+        $query->whereIn('project_id', $values);
+    })])->getCards('todo', filters: ['project_id' => [(string) $globex->id, 'nope', (string) $globex->id]]);
+
+    expect($received)->toBe([(string) $globex->id]); // strings, as a select always passed them, without duplicates
+});
+
+it('applies a toggle filter only when it is on, through its required query', function () {
+    task('Urgent', 'todo', ['priority' => 9]);
+    task('Calm', 'todo', ['priority' => 1]);
+
+    $filter = Filter::make('urgent')->toggle()->query(fn (Builder $query, bool $on) => $query->where('priority', '>', 5));
+    $board = board()->filters([$filter]);
+
+    expect($filter->getType())->toBe('toggle')
+        ->and($filter->getOptions())->toBe([])
+        ->and(array_column($board->getCards('todo', filters: ['urgent' => true]), 'title'))->toBe(['Urgent'])
+        ->and(array_column($board->getCards('todo', filters: ['urgent' => '1']), 'title'))->toBe(['Urgent'])
+        ->and(array_column($board->getCards('todo', filters: ['urgent' => false]), 'title'))->toBe(['Urgent', 'Calm'])
+        ->and(array_column($board->getCards('todo', filters: ['urgent' => '0']), 'title'))->toBe(['Urgent', 'Calm'])
+        ->and(array_column($board->getCards('todo', filters: ['urgent' => ['1']]), 'title'))->toBe(['Urgent', 'Calm'])
+        ->and(array_column($board->getCards('todo'), 'title'))->toBe(['Urgent', 'Calm'])
+        ->and(fn () => board()->filters([Filter::make('urgent')->toggle()])->getCards('todo', filters: ['urgent' => true]))->toThrow(LogicException::class, 'query()')
+        ->and(fn () => Filter::make('urgent')->toggle()->assertUsable())->toThrow(LogicException::class)
+        ->and(Filter::make('urgent')->toggle()->toggle(false)->getType())->toBe('select')
+        ->and(Filter::make('owner_id')->multiple()->multiple(false)->getType())->toBe('select')
+        ->and(Filter::make('owner_id')->multiple()->toggle(false)->getType())->toBe('multiple')
+        ->and(Filter::make('urgent')->toggle()->multiple(false)->getType())->toBe('toggle');
+});
+
+it('resolves the options once per request, and not at all while the filter is not set', function () {
+    $acme = project('Acme');
+    task('A', 'todo', ['project_id' => $acme->id]);
+    task('B');
+    $calls = 0;
+
+    $board = board()->summarize(fn (Builder $query) => $query->count())->filters([
+        Filter::make('project_id')->multiple()->options(function () use (&$calls, $acme) {
+            $calls++;
+
+            return [$acme->id => 'Acme'];
+        }),
+        Filter::make('title')->options(function () use (&$calls) {
+            $calls++;
+
+            return ['A' => 'A'];
+        }),
+    ]);
+
+    $board->getState();
+    $board->getState(filters: ['project_id' => [], 'title' => '']);
+    expect($calls)->toBe(0);
+
+    $state = $board->getState(filters: ['project_id' => [(string) $acme->id], 'title' => 'A']);
+    expect($calls)->toBe(2) // once each, over the counts, three columns of cards and three summaries
+        ->and($state[0]['count'])->toBe(1);
+});
+
+it('keeps the search and filters in the URL unless told otherwise', function () {
+    expect(board()->persistsInUrl())->toBeTrue()
+        ->and(board()->persistInUrl(false)->persistsInUrl())->toBeFalse();
+});
+
 it('moves a card and returns it as it looks afterwards', function () {
     $task = task('Build');
 

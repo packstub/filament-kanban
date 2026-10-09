@@ -15,7 +15,7 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 - **[Filament actions on cards and columns](actions.md)**: edit in a slide-over, delete or run your own actions, create in a column, act on a whole column.
 - **[Column summaries](columns.md#summaries)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](cards.md)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](configuration.md#search)**: instant search, select filters and infinite scroll per column.
+- **[Search, filters and paging](configuration.md#search)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
 - **[Swimlanes](swimlanes.md)**: rows by assignee, priority or any attribute, derived from the data or defined, folded and remembered.
 - **[Bulk selection](actions.md#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
 - **[Shared boards](configuration.md#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, and an [Undo](moves.md#undo) on every move.
