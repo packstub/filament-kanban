@@ -21,4 +21,11 @@ return [
     'card_menu' => 'Acțiuni card',
     'limit' => 'Limită: :limit carduri',
     'full' => ':column este plină (limita :limit).',
+    'unassigned' => 'Neatribuite',
+    'fold_lane' => 'Restrânge rândul',
+    'unfold_lane' => 'Extinde rândul',
+    'select_card' => 'Selectează cardul',
+    'selected' => ':count selectate',
+    'clear' => 'Renunță',
+    'bulk_refused' => ':count carduri nu au putut fi mutate.',
 ];

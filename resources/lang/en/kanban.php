@@ -21,4 +21,11 @@ return [
     'card_menu' => 'Card actions',
     'limit' => 'Limit: :limit cards',
     'full' => ':column is full (limit :limit).',
+    'unassigned' => 'Unassigned',
+    'fold_lane' => 'Fold lane',
+    'unfold_lane' => 'Unfold lane',
+    'select_card' => 'Select card',
+    'selected' => ':count selected',
+    'clear' => 'Clear',
+    'bulk_refused' => ':count cards could not be moved.',
 ];

@@ -21,4 +21,11 @@ return [
     'card_menu' => 'Kartenaktionen',
     'limit' => 'Limit: :limit Karten',
     'full' => ':column ist voll (Limit :limit).',
+    'unassigned' => 'Nicht zugewiesen',
+    'fold_lane' => 'Zeile einklappen',
+    'unfold_lane' => 'Zeile ausklappen',
+    'select_card' => 'Karte auswählen',
+    'selected' => ':count ausgewählt',
+    'clear' => 'Aufheben',
+    'bulk_refused' => ':count Karten konnten nicht verschoben werden.',
 ];

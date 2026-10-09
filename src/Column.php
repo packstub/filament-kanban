@@ -251,7 +251,7 @@ class Column
     }
 
     /** Filament colours are palettes (shade => value); the board draws one tone, the 500 shade. */
-    protected static function colorFromFilament(mixed $color): ?string
+    public static function colorFromFilament(mixed $color): ?string
     {
         if (is_array($color)) {
             return $color[500] ?? (array_values($color)[0] ?? null);

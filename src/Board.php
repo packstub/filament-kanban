@@ -6,6 +6,7 @@ use BackedEnum;
 use Closure;
 use Filament\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
@@ -67,6 +68,17 @@ class Board
     /** @var array<string, Model|null> */
     protected array $records = [];
 
+    protected ?string $laneAttribute = null;
+
+    /** @var list<Lane>|Closure|null null = derived from the data */
+    protected array|Closure|null $lanes = null;
+
+    /** @var list<Lane>|null */
+    protected ?array $resolvedLanes = null;
+
+    /** @var list<Action> */
+    protected array $bulkActions = [];
+
     public static function make(): static
     {
         return new static;
@@ -100,6 +112,23 @@ class Board
     {
         $this->columns = is_string($columns) ? Column::fromEnum($columns) : $columns;
         $this->resolvedColumns = null;
+
+        return $this;
+    }
+
+    /**
+     * Swimlanes: one row per value of this attribute, across every column. Pass the
+     * lanes (Lane::make(...), a closure returning them, or a backed enum's class) or
+     * nothing to derive them from the data: the distinct values on the board, in
+     * first-seen order, with an "Unassigned" lane for null. Pass null to turn them off.
+     *
+     * @param  list<Lane>|Closure|class-string<BackedEnum>|null  $lanes
+     */
+    public function swimlanes(?string $attribute, array|Closure|string|null $lanes = null): static
+    {
+        $this->laneAttribute = $attribute;
+        $this->lanes = is_string($lanes) ? Lane::fromEnum($lanes) : $lanes;
+        $this->resolvedLanes = null;
 
         return $this;
     }
@@ -156,7 +185,10 @@ class Board
      * sees; any other exception is reported and the user sees "The move did not go
      * through." Default: set the column attribute and save.
      *
-     * @param  Closure(Model $record, string $to, string $from): void  $callback
+     * With swimlanes, the lane the card was dropped in comes fourth (null when the
+     * browser sent none): the default save sets both attributes.
+     *
+     * @param  Closure(Model $record, string $to, string $from, ?string $lane): void  $callback
      */
     public function moveUsing(Closure $callback): static
     {
@@ -182,6 +214,21 @@ class Board
     public function cardActions(array $actions): static
     {
         $this->cardActions = array_values($actions);
+
+        return $this;
+    }
+
+    /**
+     * Filament actions offered on the selection bar once cards are selected. A
+     * Packstub\Kanban\Actions\BulkAction gets the selected records (`$records`),
+     * loaded through the board's query, so a user never reaches a record not on
+     * their board.
+     *
+     * @param  list<Action>  $actions
+     */
+    public function bulkActions(array $actions): static
+    {
+        $this->bulkActions = array_values($actions);
 
         return $this;
     }
@@ -266,6 +313,66 @@ class Board
         return null;
     }
 
+    public function hasLanes(): bool
+    {
+        return $this->laneAttribute !== null;
+    }
+
+    public function getLaneAttribute(): ?string
+    {
+        return $this->laneAttribute;
+    }
+
+    /**
+     * The lanes, in order: the ones given, or the attribute's distinct values on the
+     * board in first-seen order of the board's sort. Given lanes get an "Unassigned"
+     * lane appended while the board holds cards outside them. Null without swimlanes.
+     *
+     * @return list<Lane>|null
+     */
+    public function getLanes(): ?array
+    {
+        if (! $this->hasLanes()) {
+            return null;
+        }
+
+        if ($this->resolvedLanes !== null) {
+            return $this->resolvedLanes;
+        }
+
+        $lanes = $this->lanes instanceof Closure ? app()->call($this->lanes) : $this->lanes;
+
+        if ($lanes === null) {
+            $lanes = array_map(fn ($value) => Lane::make($value), $this->laneValues());
+        } else {
+            $lanes = array_values($lanes);
+            $values = array_map(fn (Lane $lane) => $lane->getValue(), $lanes);
+
+            if (! in_array(Lane::UNASSIGNED, $values, true) && $this->laneQuery($this->baseQuery(), Lane::UNASSIGNED, $values)->exists()) {
+                $lanes[] = Lane::make(Lane::UNASSIGNED);
+            }
+        }
+
+        return $this->resolvedLanes = $lanes;
+    }
+
+    public function getLane(string $value): ?Lane
+    {
+        foreach ($this->getLanes() ?? [] as $lane) {
+            if ($lane->getValue() === $value) {
+                return $lane;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<Action> */
+    public function getBulkActions(): array
+    {
+        return $this->bulkActions;
+    }
+
     /** @return list<Filter> */
     public function getFilters(): array
     {
@@ -341,6 +448,19 @@ class Board
             : $this->records[$key] = $this->baseQuery()->whereKey($key)->first();
     }
 
+    /**
+     * The records behind a selection, the ones still on this board for this user.
+     *
+     * @param  list<string|int>  $ids
+     * @return EloquentCollection<int, Model>
+     */
+    public function findRecords(array $ids): EloquentCollection
+    {
+        $ids = array_values(array_unique(array_map('strval', array_filter($ids, fn ($id) => ! blank($id)))));
+
+        return $ids === [] ? new EloquentCollection : $this->baseQuery()->whereKey($ids)->get();
+    }
+
     /** Whether a new card may be created in this column now: visible, droppable, creatable and not full. */
     public function canCreateIn(?string $columnName): bool
     {
@@ -406,6 +526,7 @@ class Board
     {
         $columns = $this->getColumns();
         $counts = $this->counts($search, $filters);
+        $lanes = $this->getLanes();
 
         return array_map(fn (Column $column) => [
             'name' => $column->getName(),
@@ -419,17 +540,46 @@ class Board
             'total' => $column->getLimit() === null ? null : $this->columnQuery($column->getName())->count(),
             'creatable' => $this->createAction !== null && $column->isDroppable() && $column->isCreatable(),
             'summary' => $this->getSummary($column->getName(), $search, $filters),
-            'count' => $counts[$column->getName()] ?? 0,
-            'cards' => $this->getCards($column->getName(), $search, $filters, limit: (int) ($loaded[$column->getName()] ?? 0)),
+            ...($lanes === null ? [
+                'count' => $counts[$column->getName()] ?? 0,
+                'cards' => $this->getCards($column->getName(), $search, $filters, limit: (int) ($loaded[$column->getName()] ?? 0)),
+            ] : [
+                'count' => array_sum($counts[$column->getName()] ?? []),
+                'counts' => $counts[$column->getName()] ?? [],
+                'cards' => $this->getLaneCards($column->getName(), $lanes, $counts[$column->getName()] ?? [], $search, $filters, (array) ($loaded[$column->getName()] ?? [])),
+            ]),
         ], $columns);
+    }
+
+    /**
+     * One query per lane that holds cards: a column's cards, lane by lane.
+     *
+     * @param  list<Lane>  $lanes
+     * @param  array<string, int>  $counts
+     * @param  array<string, mixed>  $filters
+     * @param  array<string, int>  $loaded
+     * @return list<array<string, mixed>>
+     */
+    protected function getLaneCards(string $columnName, array $lanes, array $counts, string $search, array $filters, array $loaded): array
+    {
+        $cards = [];
+
+        foreach ($lanes as $lane) {
+            if (($counts[$lane->getValue()] ?? 0) > 0) {
+                array_push($cards, ...$this->getCards($columnName, $search, $filters, limit: (int) ($loaded[$lane->getValue()] ?? 0), lane: $lane->getValue()));
+            }
+        }
+
+        return $cards;
     }
 
     /**
      * @param  array<string, mixed>  $filters
      * @param  int  $limit  more than perColumn() to reload pages already shown (at most 10 pages)
+     * @param  string|null  $lane  with swimlanes, the lane's cards only ('' for the unassigned lane)
      * @return list<array<string, mixed>>
      */
-    public function getCards(string $columnName, string $search = '', array $filters = [], int $offset = 0, int $limit = 0): array
+    public function getCards(string $columnName, string $search = '', array $filters = [], int $offset = 0, int $limit = 0, ?string $lane = null): array
     {
         $column = $this->getColumn($columnName);
 
@@ -439,6 +589,10 @@ class Board
 
         $query = $this->filteredQuery($search, $filters)
             ->where($this->qualifiedColumnAttribute(), $columnName);
+
+        if ($lane !== null && $this->hasLanes()) {
+            $this->laneQuery($query, $lane);
+        }
 
         foreach ($this->orderingFor($column) as [$attribute, $direction]) {
             $query->orderBy($attribute, $direction);
@@ -458,7 +612,11 @@ class Board
     {
         $card = $this->card ? ($this->card)($record) : Card::make()->title((string) $record->getKey());
 
-        return ['id' => (string) $record->getKey(), ...$card->toArray()];
+        return [
+            'id' => (string) $record->getKey(),
+            ...($this->hasLanes() ? ['lane' => $this->laneValue($record)] : []),
+            ...$card->toArray(),
+        ];
     }
 
     /* ------------------------------------------------------------------ writing */
@@ -470,11 +628,12 @@ class Board
      * propagates as it is.
      *
      * @param  list<string>|null  $order  the target column's card ids, top to bottom, when reorderable
+     * @param  string|null  $lane  with swimlanes, the lane the card was dropped in ('' for unassigned); null leaves it
      * @return array<string, mixed>
      *
      * @throws MoveRejected
      */
-    public function move(string $id, string $to, ?array $order = null): array
+    public function move(string $id, string $to, ?array $order = null, ?string $lane = null): array
     {
         $record = $this->findRecord($id)
             ?? throw new MoveRejected(__('packstub-kanban::kanban.missing'));
@@ -487,12 +646,19 @@ class Board
             throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
         }
 
-        if ($from !== $to) {
-            if (! $source->isDraggable() || ! $target->isDroppable() || ! $target->accepting($from)) {
+        $lane = $this->hasLanes() ? $lane : null;
+        $fromLane = $lane === null ? null : $this->laneValue($record);
+
+        if ($lane !== null && $this->getLane($lane) === null) {
+            throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
+        }
+
+        if ($from !== $to || ($lane !== null && $lane !== $fromLane)) {
+            if (! $source->isDraggable() || ! $target->isDroppable() || ($from !== $to && ! $target->accepting($from))) {
                 throw new MoveRejected(__('packstub-kanban::kanban.not_allowed_into', ['column' => $target->getLabel()]));
             }
 
-            if ($this->isFull($target)) {
+            if ($from !== $to && $this->isFull($target)) {
                 throw new MoveRejected(__('packstub-kanban::kanban.full', ['column' => $target->getLabel(), 'limit' => $target->getLimit()]));
             }
 
@@ -500,12 +666,18 @@ class Board
             // database error, a bug in the closure) propagates for the caller to report:
             // its message is not for the user (see InteractsWithKanban::kanbanMove()).
             if ($this->moveUsing) {
-                ($this->moveUsing)($record, $to, $from);
+                $this->hasLanes() ? ($this->moveUsing)($record, $to, $from, $lane) : ($this->moveUsing)($record, $to, $from);
             } else {
-                $record->setAttribute($this->columnAttribute, $to)->save();
+                $record->setAttribute($this->columnAttribute, $to);
+
+                if ($lane !== null) {
+                    $record->setAttribute($this->laneAttribute, $lane === Lane::UNASSIGNED ? null : $lane);
+                }
+
+                $record->save();
             }
 
-            CardMoved::dispatch($record, $from, $to, $this->key);
+            CardMoved::dispatch($record, $from, $to, $this->key, $lane);
         } elseif (! $this->isReorderable() || ! $source->isDraggable()) {
             return $this->presentCard($record);
         }
@@ -575,21 +747,85 @@ class Board
     }
 
     /**
+     * Cards per column; with swimlanes, per column and lane (one grouped query either way).
+     *
      * @param  array<string, mixed>  $filters
-     * @return array<string, int>
+     * @return array<string, int>|array<string, array<string, int>>
      */
     protected function counts(string $search, array $filters): array
     {
         $query = $this->filteredQuery($search, $filters);
         $attribute = $this->qualifiedColumnAttribute($query);
 
+        if (! $this->hasLanes()) {
+            return $query->reorder()
+                ->toBase()
+                ->select($attribute.' as kanban_column', DB::raw('count(*) as kanban_count'))
+                ->groupBy($attribute)
+                ->pluck('kanban_count', 'kanban_column')
+                ->map(fn ($count) => (int) $count)
+                ->all();
+        }
+
+        $laneAttribute = $query->qualifyColumn($this->laneAttribute);
+        $known = array_map(fn (Lane $lane) => $lane->getValue(), $this->getLanes());
+        $counts = [];
+
+        foreach ($query->reorder()->toBase()->select($attribute.' as kanban_column', $laneAttribute.' as kanban_lane', DB::raw('count(*) as kanban_count'))->groupBy($attribute, $laneAttribute)->get() as $row) {
+            $lane = (string) ($row->kanban_lane ?? Lane::UNASSIGNED);
+            $lane = in_array($lane, $known, true) ? $lane : Lane::UNASSIGNED;
+            $counts[(string) $row->kanban_column][$lane] = ($counts[(string) $row->kanban_column][$lane] ?? 0) + (int) $row->kanban_count;
+        }
+
+        return $counts;
+    }
+
+    /** The lane's cards: the unassigned lane holds null and any value outside the defined lanes. */
+    protected function laneQuery(Builder $query, string $lane, ?array $known = null): Builder
+    {
+        $attribute = $query->qualifyColumn($this->laneAttribute);
+
+        if ($lane !== Lane::UNASSIGNED) {
+            return $query->where($attribute, $lane);
+        }
+
+        $known ??= array_map(fn (Lane $l) => $l->getValue(), $this->getLanes());
+        $known = array_values(array_filter($known, fn (string $value) => $value !== Lane::UNASSIGNED));
+
+        return $query->where(fn (Builder $q) => $q->whereNull($attribute)->when($known !== [], fn (Builder $q) => $q->orWhereNotIn($attribute, $known)));
+    }
+
+    /**
+     * The attribute's distinct values on the board, in first-seen order of the board's sort.
+     *
+     * @return list<string>
+     */
+    protected function laneValues(): array
+    {
+        $query = $this->baseQuery();
+        $attribute = $query->qualifyColumn($this->laneAttribute);
+        [$sort, $direction] = $this->sort ?? [$query->getModel()->getKeyName(), 'asc'];
+        $first = ($direction === 'desc' ? 'max' : 'min').'('.$query->qualifyColumn($sort).')';
+
         return $query->reorder()
             ->toBase()
-            ->select($attribute.' as kanban_column', DB::raw('count(*) as kanban_count'))
+            ->select($attribute.' as kanban_lane')
+            ->selectRaw($first.' as kanban_first')
             ->groupBy($attribute)
-            ->pluck('kanban_count', 'kanban_column')
-            ->map(fn ($count) => (int) $count)
+            ->orderBy('kanban_first', $direction)
+            ->pluck('kanban_lane')
+            ->map(fn ($value) => (string) ($value ?? Lane::UNASSIGNED))
+            ->unique()
+            ->values()
             ->all();
+    }
+
+    protected function laneValue(Model $record): string
+    {
+        $value = $record->getAttribute($this->laneAttribute);
+        $value = (string) ($value instanceof BackedEnum ? $value->value : ($value ?? Lane::UNASSIGNED));
+
+        return $this->getLane($value) === null ? Lane::UNASSIGNED : $value;
     }
 
     /** @return list<array{0: string, 1: string}> */
