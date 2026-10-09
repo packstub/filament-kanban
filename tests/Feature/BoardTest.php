@@ -2,11 +2,13 @@
 
 use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\HtmlString;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
@@ -432,4 +434,110 @@ it('shapes avatars and the actions a card offers', function () {
         'avatars' => [['url' => 'https://acme.test/a.png', 'name' => 'Ana Pop'], ['url' => null, 'name' => 'Dan Ionescu']],
         'actions' => [],
     ])->and(Card::make()->title('B')->toArray())->not->toHaveKeys(['avatars', 'actions']);
+});
+
+it('shapes a description, progress, a due date and badge icons, and leaves them out when unset', function () {
+    $this->travelTo(new DateTimeImmutable('2026-10-09'));
+
+    $card = Card::make()
+        ->title('A')
+        ->description('Two boxes, leave them at the gate')
+        ->progress(3, 5)
+        ->due(new DateTimeImmutable('2026-10-07'))
+        ->badge('call', 'sky', icon: 'heroicon-m-phone')
+        ->badge('plain', 'gray');
+
+    expect($card->toArray())->toMatchArray([
+        'description' => 'Two boxes, leave them at the gate',
+        'progress' => ['value' => 0.6, 'label' => '3/5'],
+        'due' => ['date' => '2026-10-07', 'label' => 'Oct 7'],
+    ])
+        ->and($card->toArray()['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and($card->toArray()['badges'][1])->not->toHaveKey('icon')
+        ->and(Card::make()->badge('x', icon: Heroicon::Phone)->toArray()['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and(Card::make()->progress(0.4)->toArray()['progress'])->toBe(['value' => 0.4, 'label' => '40%'])
+        ->and(Card::make()->progress(50)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '100%']) // one number is a fraction, clamped
+        ->and(Card::make()->progress(7, 5)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '7/5'])
+        ->and(Card::make()->progress(2.5, 5)->toArray()['progress'])->toBe(['value' => 0.5, 'label' => '2.5/5'])
+        ->and(Card::make()->title('B')->progress(3, null)->toArray())->not->toHaveKey('progress') // nothing to count: no bar
+        ->and(Card::make()->title('B')->progress(1, 0)->toArray())->not->toHaveKey('progress')
+        ->and(Card::make()->due(new DateTimeImmutable('2025-10-07'))->toArray()['due']['label'])->toBe('Oct 7, 2025') // another year says so
+        ->and(Card::make()->due(new DateTimeImmutable('2026-10-07'), 'Tomorrow')->toArray()['due']['label'])->toBe('Tomorrow')
+        ->and(Card::make()->due(new DateTimeImmutable('2026-10-07 23:30', new DateTimeZone('UTC')))->toArray()['due']['date'])->toBe('2026-10-07') // the day of the date given, in its own zone
+        ->and(Card::make()->title('B')->progress(null)->due(null)->toArray())->not->toHaveKeys(['description', 'progress', 'due', 'draggable']);
+
+    config(['app.date_format' => 'd.m.Y']);
+
+    expect(Card::make()->due(new DateTimeImmutable('2026-10-07'))->toArray()['due']['label'])->toBe('07.10.2026');
+});
+
+it('sends each badge icon once per request, by name, instead of inside every card', function () {
+    task('A', 'todo', ['priority' => 9]);
+    task('B', 'todo', ['priority' => 9]);
+
+    $board = board()->card(fn (Task $task) => Card::make()->title($task->title)->badge('call', 'sky', icon: 'heroicon-m-phone')->badge('mail', icon: 'heroicon-m-envelope'));
+
+    expect($board->getIcons())->toBe([])
+        ->and($board->getCards('todo')[1]['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and(array_keys($board->getIcons()))->toBe(['heroicon-m-phone', 'heroicon-m-envelope'])
+        ->and($board->getIcons()['heroicon-m-phone'])->toContain('<svg')
+        ->and(json_encode($board->getCards('todo')))->not->toContain('<svg');
+});
+
+it('evaluates a label closure once per column', function () {
+    $runs = 0;
+    $column = Column::make('todo')->label(function () use (&$runs) {
+        $runs++;
+
+        return new HtmlString('<em>To do</em>');
+    });
+
+    $state = board()->columns([$column])->getState();
+
+    expect($state[0])->toMatchArray(['label' => '<em>To do</em>', 'labelHtml' => true])
+        ->and($runs)->toBe(1);
+});
+
+it('locks a card: said in the JSON, refused by the server for a move and a reorder alike', function () {
+    $locked = task('Locked');
+    $free = task('Free');
+
+    $board = board()->reorderable('sort')->card(fn (Task $task) => Card::make()->title($task->title)->locked($task->title === 'Locked'));
+
+    expect($board->getCards('todo')[0])->toMatchArray(['title' => 'Locked', 'draggable' => false])
+        ->and($board->getCards('todo')[1])->not->toHaveKey('draggable')
+        ->and(Card::make()->draggable(false)->isDraggable())->toBeFalse()
+        ->and(Card::make()->locked(false)->isDraggable())->toBeTrue()
+        ->and(fn () => $board->move((string) $locked->id, 'doing'))->toThrow(MoveRejected::class, 'This card cannot be moved.')
+        ->and(fn () => $board->move((string) $locked->id, 'todo', [(string) $free->id, (string) $locked->id]))->toThrow(MoveRejected::class, 'This card cannot be moved.')
+        ->and($locked->fresh()->status)->toBe('todo')
+        ->and($locked->fresh()->sort)->toBeNull();
+
+    $board->move((string) $free->id, 'doing');
+
+    expect($free->fresh()->status)->toBe('doing');
+
+    // Dropped back where it was on a board without reordering: nothing changes, nothing to refuse.
+    expect(board()->card(fn (Task $task) => Card::make()->title($task->title)->locked())->move((string) $locked->id, 'todo'))
+        ->toMatchArray(['title' => 'Locked', 'draggable' => false]);
+});
+
+it('keeps a column label closure: set again, it runs again', function () {
+    $column = Column::make('todo')->label(fn () => 'First');
+
+    expect($column->getLabel())->toBe('First')
+        ->and($column->label(fn () => 'Second')->getLabel())->toBe('Second');
+});
+
+it('tells the browser whether a column label is HTML, and gives it the icon and description', function () {
+    $state = board()->columns([
+        Column::make('todo')->label(fn () => new HtmlString('<em>To do</em>'))->icon('heroicon-m-inbox')->description(fn () => 'New work lands here'),
+        Column::make('doing')->label('<b>not html</b>'),
+        Column::make('done'),
+    ])->getState();
+
+    expect($state[0])->toMatchArray(['label' => '<em>To do</em>', 'labelHtml' => true, 'description' => 'New work lands here'])
+        ->and($state[0]['icon'])->toContain('<svg')
+        ->and($state[1])->toMatchArray(['label' => '<b>not html</b>', 'labelHtml' => false, 'icon' => null, 'description' => null])
+        ->and(Column::make('x')->label(new HtmlString('<i>x</i>'))->hasHtmlLabel())->toBeTrue();
 });

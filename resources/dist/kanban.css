@@ -182,6 +182,8 @@ div.pk { visibility: visible; animation: none; }
 }
 
 .pk-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 999px; }
+.pk-col-icon { display: grid; flex: none; color: var(--pk-muted); }
+.pk .pk-col-icon svg { width: 0.875rem; height: 0.875rem; }
 
 .pk-col-title { display: flex; flex-direction: column; min-width: 0; }
 .pk-summary { overflow: hidden; font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; color: var(--pk-muted); }
@@ -282,7 +284,14 @@ div.pk { visibility: visible; animation: none; }
 }
 
 .pk-card:hover { border-color: var(--pk-card-hover); }
-.pk-col-locked .pk-card { cursor: default; }
+.pk-col-locked .pk-card, .pk-card-locked { cursor: default; }
+
+/* The lock sits in the card's top-right corner, whatever lines the card has; the menu button moves over. */
+.pk-lock { position: absolute; top: 0.5rem; inset-inline-end: 0.55rem; display: grid; color: var(--pk-muted); }
+.pk .pk-lock svg { width: 0.75rem; height: 0.75rem; }
+.pk-card-locked .pk-card-top { padding-inline-end: 2.5rem; }
+.pk-card-locked :is(.pk-title, .pk-description) { padding-inline-end: 1.25rem; }
+.pk-card-locked .pk-card-menu { inset-inline-end: 1.6rem; }
 
 .pk-card-accent::before {
     content: "";
@@ -308,6 +317,7 @@ div.pk { visibility: visible; animation: none; }
 .pk-eyebrow { font: 500 0.6875rem/1.2 var(--pk-mono); letter-spacing: 0.02em; color: var(--pk-muted); }
 .pk-aside { margin-inline-start: auto; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pk-text); white-space: nowrap; }
 .pk-title { font-size: 0.8125rem; font-weight: 500; line-height: 1.3; color: var(--pk-text); overflow-wrap: anywhere; }
+.pk-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.75rem; line-height: 1.35; color: var(--pk-muted); overflow-wrap: anywhere; }
 
 .pk-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
 .pk-avatars { display: flex; margin-inline-start: auto; padding-inline-start: 0.25rem; }
@@ -330,7 +340,23 @@ div.pk { visibility: visible; animation: none; }
 
 .pk-meta { min-width: 0; overflow: hidden; font-size: 0.72rem; color: var(--pk-muted); white-space: nowrap; text-overflow: ellipsis; }
 
+.pk-due { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.72rem; font-variant-numeric: tabular-nums; color: var(--pk-muted); white-space: nowrap; }
+.pk .pk-due svg { width: 0.8rem; height: 0.8rem; }
+.pk-due-today { color: var(--warning-600); }
+.pk-due-past { color: var(--danger-600); }
+.dark .pk-due-today { color: var(--warning-400); }
+.dark .pk-due-past { color: var(--danger-400); }
+
+/* on its own line at the end of the foot */
+.pk-progress { flex: 0 0 100%; height: 0.25rem; margin-top: 0.1rem; overflow: hidden; border-radius: 999px; background: var(--gray-200); }
+.dark .pk-progress { background: rgb(255 255 255 / 0.1); }
+.pk-progress-bar { display: block; height: 100%; border-radius: inherit; background: var(--primary-500); transition: width 0.2s; }
+.pk-progress-full { background: var(--success-500); }
+
 .pk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
     padding: 0.1rem 0.35rem;
     border-radius: 0.25rem;
     background: color-mix(in oklab, var(--pk-badge) 14%, transparent);
@@ -341,10 +367,13 @@ div.pk { visibility: visible; animation: none; }
     white-space: nowrap;
 }
 
+.pk-badge-icon { display: grid; }
+.pk .pk-badge-icon svg { width: 0.75rem; height: 0.75rem; }
+
 .pk-card-menu {
     position: absolute;
     top: 0.35rem;
-    right: 0.3rem;
+    inset-inline-end: 0.3rem;
     display: grid;
     place-items: center;
     width: 1.5rem;

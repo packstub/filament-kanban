@@ -68,7 +68,7 @@
                     <label class="pk-menu-item">
                         <input type="checkbox" :checked="! hidden.includes(column.name)" x-on:change="toggleHidden(column.name)">
                         <span class="pk-dot" :style="dot(column.color)"></span>
-                        <span x-text="column.label"></span>
+                        <span x-html="labelHtml(column)"></span>
                         <span class="pk-menu-count" x-text="column.count"></span>
                     </label>
                 </template>
@@ -91,10 +91,11 @@
                 }"
                 x-on:click="if (folded[column.name] && ! $event.target.closest('.pk-fold')) toggleFold(column.name)"
             >
-                <header class="pk-col-head" x-on:dblclick="toggleFold(column.name)">
+                <header class="pk-col-head" x-on:dblclick="toggleFold(column.name)" :title="column.description || null">
                     <span class="pk-dot" :style="dot(column.color)"></span>
+                    <span class="pk-col-icon" x-show="column.icon" x-html="column.icon"></span>
                     <div class="pk-col-title">
-                        <h3 x-text="column.label"></h3>
+                        <h3 x-html="labelHtml(column)"></h3>
                         <span class="pk-summary" x-show="column.summary" x-text="column.summary"></span>
                     </div>
                     <span
@@ -123,20 +124,31 @@
                             class="pk-card"
                             :data-id="card.id"
                             x-show="matches(card)"
-                            :class="{ 'pk-card-pending': card._pending, 'pk-card-flash': card._flash, 'pk-card-accent': card.accent }"
+                            :class="{ 'pk-card-pending': card._pending, 'pk-card-flash': card._flash, 'pk-card-accent': card.accent, 'pk-card-locked': card.draggable === false }"
                             :style="card.accent ? '--pk-card-accent:' + tone(card.accent) : ''"
                         >
                             <a class="pk-card-link" :href="card.url || null" x-on:click="open($event, card)" draggable="false">
+                                <span class="pk-lock" x-show="card.draggable === false" role="img" :title="t.locked" :aria-label="t.locked">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.75" y="8.75" width="10.5" height="8.5" rx="1.5"/><path d="M7 8.75V6.5a3 3 0 0 1 6 0v2.25"/></svg>
+                                </span>
                                 <div class="pk-card-top" x-show="card.eyebrow || card.aside">
                                     <span class="pk-eyebrow" x-text="card.eyebrow"></span>
                                     <span class="pk-aside" x-text="card.aside"></span>
                                 </div>
                                 <div class="pk-title" x-show="card.title" x-text="card.title"></div>
-                                <div class="pk-card-foot" x-show="(card.badges && card.badges.length) || (card.meta && card.meta.length) || (card.avatars && card.avatars.length)">
+                                <div class="pk-description" x-show="card.description" x-text="card.description"></div>
+                                <div class="pk-card-foot" x-show="(card.badges && card.badges.length) || (card.meta && card.meta.length) || (card.avatars && card.avatars.length) || card.due || card.progress">
                                     <template x-for="badge in (card.badges || [])" :key="badge.label">
-                                        <span class="pk-badge" :style="'--pk-badge:' + tone(badge.color || 'gray')" x-text="badge.label"></span>
+                                        <span class="pk-badge" :style="'--pk-badge:' + tone(badge.color || 'gray')">
+                                            <template x-if="badge.icon && icons[badge.icon]"><span class="pk-badge-icon" x-html="icons[badge.icon]"></span></template>
+                                            <span x-text="badge.label"></span>
+                                        </span>
                                     </template>
                                     <span class="pk-meta" x-text="(card.meta || []).join(' · ')"></span>
+                                    <span class="pk-due" x-show="card.due" :class="dueState(card.due)" :title="card.due?.date">
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3.25" y="4.75" width="13.5" height="11.5" rx="1.5"/><path d="M3.25 8.75h13.5M7 3v3M13 3v3"/></svg>
+                                        <span x-text="card.due?.label"></span>
+                                    </span>
                                     <span class="pk-avatars" x-show="card.avatars && card.avatars.length">
                                         <template x-for="(avatar, i) in (card.avatars || [])" :key="i">
                                             <span class="pk-avatar" :title="avatar.name">
@@ -144,6 +156,9 @@
                                                 <template x-if="! avatar.url"><span x-text="initials(avatar.name)"></span></template>
                                             </span>
                                         </template>
+                                    </span>
+                                    <span class="pk-progress" x-show="card.progress" :title="card.progress?.label" role="progressbar" :aria-valuenow="card.progress ? Math.round(card.progress.value * 100) : null" aria-valuemin="0" aria-valuemax="100" :aria-label="card.progress?.label">
+                                        <span class="pk-progress-bar" :class="{ 'pk-progress-full': card.progress && card.progress.value >= 1 }" :style="'width:' + (card.progress ? card.progress.value * 100 : 0) + '%'"></span>
                                     </span>
                                 </div>
                             </a>
@@ -165,12 +180,12 @@
                                         <span x-text="action.label"></span>
                                     </button>
                                 </template>
-                                <div class="pk-menu-sep" x-show="actionsFor(card).length && column.draggable && targets(column.name).length"></div>
-                                <div class="pk-menu-label" x-show="column.draggable && targets(column.name).length" x-text="t.move_to"></div>
-                                <template x-for="target in (column.draggable ? targets(column.name) : [])" :key="target.name">
+                                <div class="pk-menu-sep" x-show="actionsFor(card).length && canMove(card, column) && targets(column.name).length"></div>
+                                <div class="pk-menu-label" x-show="canMove(card, column) && targets(column.name).length" x-text="t.move_to"></div>
+                                <template x-for="target in (canMove(card, column) ? targets(column.name) : [])" :key="target.name">
                                     <button type="button" class="pk-menu-item" x-on:click="menu = null; moveTo(card.id, column.name, target.name)">
                                         <span class="pk-dot" :style="dot(target.color)"></span>
-                                        <span x-text="target.label"></span>
+                                        <span x-html="labelHtml(target)"></span>
                                     </button>
                                 </template>
                             </div>

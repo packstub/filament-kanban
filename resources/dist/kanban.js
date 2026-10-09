@@ -20,9 +20,16 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// The viewer's calendar day as an ISO date (YYYY-MM-DD), compared with a card's due date.
+function localDay(now = new Date()) {
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
+
 export default function packstubKanban(config) {
     return {
         columns: config.columns || [],
+        icons: config.icons || {}, // badge icons by name, grown from every answer that carries cards
+        today: localDay(), // the viewer's calendar day, for due dates; moves on at midnight
         filters: config.filters,
         cardActions: config.cardActions || [],
         createAction: config.createAction,
@@ -74,6 +81,12 @@ export default function packstubKanban(config) {
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
 
+            // A board left open overnight recolours its due dates.
+            this.clock = setInterval(() => {
+                const day = localDay()
+                if (day !== this.today) this.today = day
+            }, 60000)
+
             // Pick up other people's changes, but never while a card is in the air.
             if (config.poll) {
                 this.poller = setInterval(() => {
@@ -88,6 +101,7 @@ export default function packstubKanban(config) {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
             clearInterval(this.poller)
+            clearInterval(this.clock)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
@@ -108,7 +122,9 @@ export default function packstubKanban(config) {
                 },
                 sort: config.reorderable,
                 draggable: '.pk-card',
-                filter: '.pk-card-menu, .pk-card-popover, .pk-card-pending',
+                // A locked card is filtered rather than left out of `draggable`, so Sortable's
+                // indexes still count every card and match the column's state.
+                filter: '.pk-card-locked, .pk-card-menu, .pk-card-popover, .pk-card-pending',
                 preventOnFilter: false,
                 disabled: ! column.draggable && ! column.droppable,
                 animation: 150,
@@ -204,6 +220,8 @@ export default function packstubKanban(config) {
                         return undo(result?.message || this.t.failed)
                     }
 
+                    Object.assign(this.icons, result.icons || {})
+
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
                         const column = this.findColumn(name)
                         if (column) column.summary = summary
@@ -249,7 +267,12 @@ export default function packstubKanban(config) {
         },
 
         hasMenu(card, column) {
-            return this.actionsFor(card).length > 0 || (column.draggable && this.targets(column.name).length > 0)
+            return this.actionsFor(card).length > 0 || (this.canMove(card, column) && this.targets(column.name).length > 0)
+        },
+
+        // The column lets cards out and the card itself is not locked (the server checks both again).
+        canMove(card, column) {
+            return !! column.draggable && card.draggable !== false
         },
 
         runAction(name, card) {
@@ -289,7 +312,7 @@ export default function packstubKanban(config) {
             let text = TEXT.get(raw)
 
             if (text === undefined) {
-                text = [card.eyebrow, card.title, card.aside, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
+                text = [card.eyebrow, card.title, card.aside, card.description, card.due?.label, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
                     .filter(Boolean).join(' ').toLowerCase()
                 TEXT.set(raw, text)
             }
@@ -327,6 +350,8 @@ export default function packstubKanban(config) {
                     return
                 }
 
+                Object.assign(this.icons, result.icons || {})
+
                 if (! this.drawn) {
                     this.columns = result.columns
                     this.drawn = true
@@ -337,6 +362,12 @@ export default function packstubKanban(config) {
                 for (const fresh of result.columns) {
                     const column = this.findColumn(fresh.name)
                     if (column) {
+                        Object.assign(column, {
+                            label: fresh.label,
+                            labelHtml: fresh.labelHtml,
+                            icon: fresh.icon,
+                            description: fresh.description,
+                        })
                         column.cards = fresh.cards
                         column.count = fresh.count
                         column.total = fresh.total
@@ -366,9 +397,10 @@ export default function packstubKanban(config) {
             this.loading[column.name] = true
 
             this.$wire.kanbanMore(column.name, column.cards.length, this.search, this.active)
-                .then((cards) => {
+                .then((result) => {
+                    Object.assign(this.icons, result?.icons || {})
                     const known = new Set(column.cards.map((c) => c.id))
-                    column.cards.push(...(cards || []).filter((c) => ! known.has(c.id)))
+                    column.cards.push(...(result?.cards || []).filter((c) => ! known.has(c.id)))
                 })
                 .finally(() => {
                     this.loading[column.name] = false
@@ -445,6 +477,21 @@ export default function packstubKanban(config) {
 
         initials(name) {
             return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+        },
+
+        // A column label is text (escaped here) unless the server rendered an Htmlable.
+        labelHtml(column) {
+            return column.labelHtml ? column.label : this.escape(column.label)
+        },
+
+        escape(text) {
+            return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+        },
+
+        // Past or today, by the ISO date in the viewer's own calendar day.
+        dueState(due) {
+            if (! due?.date) return ''
+            return due.date < this.today ? 'pk-due-past' : (due.date === this.today ? 'pk-due-today' : '')
         },
 
         notify(message, status) {

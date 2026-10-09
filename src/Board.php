@@ -68,6 +68,9 @@ class Board
     /** @var array<string, Model|null> */
     protected array $records = [];
 
+    /** @var array<string, string|null>  badge icons the cards presented so far use, name => SVG */
+    protected array $icons = [];
+
     public static function make(): static
     {
         return new static;
@@ -416,6 +419,9 @@ class Board
         return array_map(fn (Column $column) => [
             'name' => $column->getName(),
             'label' => $column->getLabel(),
+            'labelHtml' => $column->hasHtmlLabel(),
+            'icon' => $column->getIcon(),
+            'description' => $column->getDescription(),
             'color' => $column->getColor(),
             'collapsed' => $column->isCollapsed(),
             'droppable' => $column->isDroppable(),
@@ -460,8 +466,27 @@ class Board
     public function presentCard(Model $record): array
     {
         $card = $this->card ? ($this->card)($record) : Card::make()->title((string) $record->getKey());
+        $card = ['id' => (string) $record->getKey(), ...$card->toArray()];
 
-        return ['id' => (string) $record->getKey(), ...$card->toArray()];
+        // A badge names its icon; the SVG goes to the browser once per request, not per card.
+        foreach ($card['badges'] ?? [] as $badge) {
+            if (isset($badge['icon']) && ! array_key_exists($badge['icon'], $this->icons)) {
+                $this->icons[$badge['icon']] = \Filament\Support\generate_icon_html($badge['icon'])?->toHtml();
+            }
+        }
+
+        return $card;
+    }
+
+    /**
+     * The badge icons used by the cards presented in this request, as SVG by name, for
+     * the browser's icon map. Every answer that carries cards carries these too.
+     *
+     * @return array<string, string>
+     */
+    public function getIcons(): array
+    {
+        return array_filter($this->icons);
     }
 
     /* ------------------------------------------------------------------ writing */
@@ -488,6 +513,15 @@ class Board
 
         if (! $source || ! $target) {
             throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
+        }
+
+        // The card's own rule (Card::locked()), re-read from the record: one card, so
+        // the card closure runs once here, never over the column. A drop that changes
+        // nothing (back into its own column, no reordering) is answered as before.
+        $unchanged = $from === $to && (! $this->isReorderable() || ! $source->isDraggable());
+
+        if (! $unchanged && $this->card && ! ($this->card)($record)->isDraggable()) {
+            throw new MoveRejected(__('packstub-kanban::kanban.locked'));
         }
 
         if ($from !== $to) {

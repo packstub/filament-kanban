@@ -159,7 +159,7 @@ it('refreshes with a search and loads more cards', function () {
         ->call('kanbanRefresh', 'alp')
         ->assertReturned(fn ($result) => $result['columns'][0]['count'] === 1 && $result['columns'][0]['cards'][0]['title'] === 'Alpha')
         ->call('kanbanMore', 'todo', 1)
-        ->assertReturned(fn ($cards) => count($cards) === 1 && $cards[0]['title'] === 'Beta');
+        ->assertReturned(fn ($result) => count($result['cards']) === 1 && $result['cards'][0]['title'] === 'Beta' && $result['icons'] === []);
 });
 
 it('refreshes as many cards as the browser already shows', function () {

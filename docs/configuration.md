@@ -112,8 +112,8 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 
 ### Column
 
-`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`. See [Columns](columns.md).
+`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `icon()`, `description()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`. See [Columns](columns.md).
 
 ### Card
 
-`make()`, `eyebrow()`, `title()`, `aside()`, `badge()`, `meta()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`. See [Cards](cards.md).
+`make()`, `eyebrow()`, `title()`, `aside()`, `description()`, `badge()`, `meta()`, `due()`, `progress()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`, `locked()`, `draggable()`. See [Cards](cards.md).

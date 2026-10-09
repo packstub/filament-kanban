@@ -36,22 +36,26 @@ trait InteractsWithKanban
     /**
      * @param  array<string, mixed>  $filters
      * @param  array<string, int>  $loaded  cards already shown per column, reloaded as many
-     * @return array{columns: list<array<string, mixed>>}
+     * @return array{columns: list<array<string, mixed>>, icons: array<string, string>}
      */
     #[Renderless]
     public function kanbanRefresh(string $search = '', array $filters = [], array $loaded = []): array
     {
-        return ['columns' => $this->getKanban()->getState($search, $filters, $loaded)];
+        $board = $this->getKanban();
+
+        return ['columns' => $board->getState($search, $filters, $loaded), 'icons' => $board->getIcons()];
     }
 
     /**
      * @param  array<string, mixed>  $filters
-     * @return list<array<string, mixed>>
+     * @return array{cards: list<array<string, mixed>>, icons: array<string, string>}
      */
     #[Renderless]
     public function kanbanMore(string $column, int $offset, string $search = '', array $filters = []): array
     {
-        return $this->getKanban()->getCards($column, $search, $filters, $offset);
+        $board = $this->getKanban();
+
+        return ['cards' => $board->getCards($column, $search, $filters, $offset), 'icons' => $board->getIcons()];
     }
 
     /**
@@ -62,7 +66,7 @@ trait InteractsWithKanban
      *
      * @param  list<string>|null  $order
      * @param  array<string, mixed>  $filters  the board's current ones, for the column summaries
-     * @return array{ok: bool, card?: array<string, mixed>, summaries?: array<string, string|null>, message?: string}
+     * @return array{ok: bool, card?: array<string, mixed>, summaries?: array<string, string|null>, icons?: array<string, string>, message?: string}
      */
     #[Renderless]
     public function kanbanMove(string $id, string $to, ?array $order = null, string $search = '', array $filters = []): array
@@ -87,6 +91,7 @@ trait InteractsWithKanban
             'ok' => true,
             'card' => $card,
             'summaries' => $board->getSummaries(array_filter([(string) $from, $to]), $search, $filters),
+            'icons' => $board->getIcons(),
         ];
     }
 
@@ -128,6 +133,7 @@ trait InteractsWithKanban
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
             'columns' => $this->kanbanDrawn ? null : $board->getState(),
+            'icons' => $board->getIcons(),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
