@@ -51,7 +51,7 @@ Colours take the same names as columns (`gray`, `red`, `amber`, `emerald`, `prim
 
 ### Due dates
 
-`due()` takes any `DateTimeInterface`. The label defaults to the date in `config('app.date_format')`, or `M j` (`Oct 7`) when the app has none; pass your own for `due($date, 'Tomorrow')` or `due($date, $date->diffForHumans())`.
+`due()` takes any `DateTimeInterface`. The label defaults to the date in `config('app.date_format')`, or `M j` (`Oct 7`, and `Oct 7, 2025` outside the current year) when the app has none; pass your own for `due($date, 'Tomorrow')` or `due($date, $date->diffForHumans())`.
 
 Only the calendar day travels to the browser, taken in the timezone of the date you pass; the browser compares it with the viewer's current day. The check is per day: a card is `warning` all day on its due date, whatever the time, and `danger` from the next day. A date-only column (`date` cast) is right as it is. A datetime column is stored in the app's timezone (usually UTC), so convert it to the user's first, or 23:30 UTC on the 7th shows as the 7th to a viewer for whom it was already the 8th:
 
@@ -73,7 +73,7 @@ Column rules (`draggable()`, `droppable()`, `accepts()`) apply to every card in 
     ->locked($task->assignee_id !== auth()->id()))
 ```
 
-A locked card shows a small lock in its corner (with the refusal message as its tooltip and accessible name), cannot be dragged, and offers no "Move to" in its menu (its actions stay). The server reads the card again on every move and refuses with "This card cannot be moved." whatever the browser sent, for a reorder inside the column too. `draggable(false)` is the same as `locked()`. Nothing is evaluated per card beyond the card closure, which already runs for every card drawn.
+A locked card shows a small lock in its corner (with the refusal message as its tooltip and accessible name), cannot be dragged, and offers no "Move to" in its menu (its actions stay). The server reads the card again on every move and refuses with "This card cannot be moved." whatever the browser sent, for a reorder inside the column too. A lock keeps the card from being picked up; it does not pin its slot, so a card dropped above it in a reorderable column still pushes it down one place. `draggable(false)` is the same as `locked()`. Nothing is evaluated per card beyond the card closure, which already runs for every card drawn.
 
 ## Search on cards
 

@@ -281,6 +281,8 @@ it('shapes avatars and the actions a card offers', function () {
 });
 
 it('shapes a description, progress, a due date and badge icons, and leaves them out when unset', function () {
+    $this->travelTo(new DateTimeImmutable('2026-10-09'));
+
     $card = Card::make()
         ->title('A')
         ->description('Two boxes, leave them at the gate')
@@ -303,6 +305,7 @@ it('shapes a description, progress, a due date and badge icons, and leaves them 
         ->and(Card::make()->progress(2.5, 5)->toArray()['progress'])->toBe(['value' => 0.5, 'label' => '2.5/5'])
         ->and(Card::make()->title('B')->progress(3, null)->toArray())->not->toHaveKey('progress') // nothing to count: no bar
         ->and(Card::make()->title('B')->progress(1, 0)->toArray())->not->toHaveKey('progress')
+        ->and(Card::make()->due(new DateTimeImmutable('2025-10-07'))->toArray()['due']['label'])->toBe('Oct 7, 2025') // another year says so
         ->and(Card::make()->due(new DateTimeImmutable('2026-10-07'), 'Tomorrow')->toArray()['due']['label'])->toBe('Tomorrow')
         ->and(Card::make()->due(new DateTimeImmutable('2026-10-07 23:30', new DateTimeZone('UTC')))->toArray()['due']['date'])->toBe('2026-10-07') // the day of the date given, in its own zone
         ->and(Card::make()->title('B')->progress(null)->due(null)->toArray())->not->toHaveKeys(['description', 'progress', 'due', 'draggable']);
@@ -357,6 +360,17 @@ it('locks a card: said in the JSON, refused by the server for a move and a reord
     $board->move((string) $free->id, 'doing');
 
     expect($free->fresh()->status)->toBe('doing');
+
+    // Dropped back where it was on a board without reordering: nothing changes, nothing to refuse.
+    expect(board()->card(fn (Task $task) => Card::make()->title($task->title)->locked())->move((string) $locked->id, 'todo'))
+        ->toMatchArray(['title' => 'Locked', 'draggable' => false]);
+});
+
+it('keeps a column label closure: set again, it runs again', function () {
+    $column = Column::make('todo')->label(fn () => 'First');
+
+    expect($column->getLabel())->toBe('First')
+        ->and($column->label(fn () => 'Second')->getLabel())->toBe('Second');
 });
 
 it('tells the browser whether a column label is HTML, and gives it the icon and description', function () {

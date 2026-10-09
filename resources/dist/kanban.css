@@ -290,8 +290,8 @@ div.pk { visibility: visible; }
 .pk-lock { position: absolute; top: 0.5rem; inset-inline-end: 0.55rem; display: grid; color: var(--pk-muted); }
 .pk .pk-lock svg { width: 0.75rem; height: 0.75rem; }
 .pk-card-locked .pk-card-top { padding-inline-end: 2.5rem; }
-.pk-card-locked .pk-title { padding-inline-end: 1.25rem; }
-.pk-card-locked .pk-card-menu { right: 1.6rem; }
+.pk-card-locked :is(.pk-title, .pk-description) { padding-inline-end: 1.25rem; }
+.pk-card-locked .pk-card-menu { inset-inline-end: 1.6rem; }
 
 .pk-card-accent::before {
     content: "";
@@ -373,7 +373,7 @@ div.pk { visibility: visible; }
 .pk-card-menu {
     position: absolute;
     top: 0.35rem;
-    right: 0.3rem;
+    inset-inline-end: 0.3rem;
     display: grid;
     place-items: center;
     width: 1.5rem;

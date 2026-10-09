@@ -125,7 +125,8 @@ class Card implements Arrayable
      * A date in the card's foot, coloured by the browser: danger once the day is past,
      * warning on the day. Only the calendar day travels, in the timezone of the date
      * given (setTimezone() a datetime first). The label defaults to the date in
-     * `config('app.date_format')` (or `M j`); pass your own for "Tomorrow", "in 3 days"…
+     * `config('app.date_format')` (or `M j`, `M j, Y` outside the current year); pass
+     * your own for "Tomorrow", "in 3 days"…
      */
     public function due(?DateTimeInterface $date, ?string $label = null): static
     {
@@ -139,7 +140,7 @@ class Card implements Arrayable
 
         $this->due = [
             'date' => $date->toDateString(),
-            'label' => $label ?? $date->translatedFormat(config('app.date_format') ?? 'M j'),
+            'label' => $label ?? $date->translatedFormat(config('app.date_format') ?? ($date->isCurrentYear() ? 'M j' : 'M j, Y')),
         ];
 
         return $this;

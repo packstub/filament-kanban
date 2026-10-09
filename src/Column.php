@@ -20,6 +20,10 @@ class Column
 
     protected string|Htmlable|Closure|null $label = null;
 
+    protected string|Htmlable|null $resolvedLabel = null;
+
+    protected bool $labelResolved = false;
+
     protected string|Closure|null $color = null;
 
     protected string|BackedEnum|Closure|null $icon = null;
@@ -80,6 +84,7 @@ class Column
     public function label(string|Htmlable|Closure|null $label): static
     {
         $this->label = $label;
+        $this->labelResolved = false;
 
         return $this;
     }
@@ -222,11 +227,12 @@ class Column
     /** A label closure runs once per column, whichever of getLabel() and hasHtmlLabel() asks first. */
     protected function resolveLabel(): string|Htmlable|null
     {
-        if ($this->label instanceof Closure) {
-            $this->label = $this->evaluate($this->label);
+        if (! $this->labelResolved) {
+            $this->resolvedLabel = $this->evaluate($this->label);
+            $this->labelResolved = true;
         }
 
-        return $this->label;
+        return $this->resolvedLabel;
     }
 
     /** The icon rendered to SVG, for the browser. */

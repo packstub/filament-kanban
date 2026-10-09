@@ -20,10 +20,16 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// The viewer's calendar day as an ISO date (YYYY-MM-DD), compared with a card's due date.
+function localDay(now = new Date()) {
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
+
 export default function packstubKanban(config) {
     return {
         columns: config.columns,
         icons: config.icons || {}, // badge icons by name, grown from every answer that carries cards
+        today: localDay(), // the viewer's calendar day, for due dates; moves on at midnight
         filters: config.filters,
         cardActions: config.cardActions || [],
         createAction: config.createAction,
@@ -67,6 +73,12 @@ export default function packstubKanban(config) {
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
 
+            // A board left open overnight recolours its due dates.
+            this.clock = setInterval(() => {
+                const day = localDay()
+                if (day !== this.today) this.today = day
+            }, 60000)
+
             // Pick up other people's changes, but never while a card is in the air.
             if (config.poll) {
                 this.poller = setInterval(() => {
@@ -81,6 +93,7 @@ export default function packstubKanban(config) {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
             clearInterval(this.poller)
+            clearInterval(this.clock)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
@@ -325,6 +338,12 @@ export default function packstubKanban(config) {
                 for (const fresh of result.columns) {
                     const column = this.findColumn(fresh.name)
                     if (column) {
+                        Object.assign(column, {
+                            label: fresh.label,
+                            labelHtml: fresh.labelHtml,
+                            icon: fresh.icon,
+                            description: fresh.description,
+                        })
                         column.cards = fresh.cards
                         column.count = fresh.count
                         column.total = fresh.total
@@ -442,9 +461,7 @@ export default function packstubKanban(config) {
         // Past or today, by the ISO date in the viewer's own calendar day.
         dueState(due) {
             if (! due?.date) return ''
-            const now = new Date()
-            const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
-            return due.date < today ? 'pk-due-past' : (due.date === today ? 'pk-due-today' : '')
+            return due.date < this.today ? 'pk-due-past' : (due.date === this.today ? 'pk-due-today' : '')
         },
 
         notify(message, status) {

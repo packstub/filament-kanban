@@ -513,8 +513,11 @@ class Board
         }
 
         // The card's own rule (Card::locked()), re-read from the record: one card, so
-        // the card closure runs once here, never over the column.
-        if (($this->presentCard($record)['draggable'] ?? true) === false) {
+        // the card closure runs once here, never over the column. A drop that changes
+        // nothing (back into its own column, no reordering) is answered as before.
+        $unchanged = $from === $to && (! $this->isReorderable() || ! $source->isDraggable());
+
+        if (! $unchanged && $this->card && ! ($this->card)($record)->isDraggable()) {
             throw new MoveRejected(__('packstub-kanban::kanban.locked'));
         }
 
