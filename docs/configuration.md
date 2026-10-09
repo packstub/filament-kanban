@@ -35,7 +35,7 @@ Without `searchable()` the search box is not shown.
 
 ## Filters
 
-A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer.
+A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer. The closure gets the value as the options spell it: an `int` for `User::pluck('name', 'id')`, a string for `['overdue' => 'Overdue']`. Options given as a closure are resolved once per request, and only once a value is set.
 
 ```php
 Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
@@ -72,7 +72,9 @@ Filter::make('overdue')->toggle()
 
 ## Search and filters in the URL
 
-The search and the active filters are kept in the page's query string (`?search=acme&filters[owner_id][]=3&filters[mine]=1`), replaced in place as they change, so a filtered board can be bookmarked, shared and reloaded; an untouched board keeps a clean URL. The URL is trusted no more than the browser is: a filter the board does not define is ignored, and every value is checked against the options on the server. `persistInUrl(false)` leaves the URL alone.
+The search and the active filters are kept in the page's query string (`?search=acme&filters[owner_id][0]=3&filters[owner_id][1]=7&filters[mine]=1`), replaced in place as they change, so a filtered board can be bookmarked, shared and reloaded; an untouched board keeps a clean URL. The URL is trusted no more than the browser is: a filter the board does not define is ignored, a value outside the options is dropped in the browser and on the server, and a page shared with filters loads as before and then shows the filtered board. `persistInUrl(false)` leaves the URL alone.
+
+The keys are the same for every board, so one URL-persisted board per page: with two boards on a page, or a page that uses `?search=` for something else, `persistInUrl(false)` on the others.
 
 ## Paging
 
@@ -152,6 +154,6 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `make(string $name)` | required | The attribute the default query narrows, and the key in the URL. |
 | `label(string\|Closure\|null)` | from the name | `owner_id` reads "Owner". |
 | `options(array\|Closure)` | `[]` | `[value => label]`; the only values the server accepts. |
-| `query(Closure)` | `where` / `whereIn` | `fn (Builder $query, string\|array\|true $value)`; required for `toggle()`. |
+| `query(Closure)` | `where` / `whereIn` | `fn (Builder $query, string\|int\|array\|true $value)`, the value as the options spell it; required for `toggle()`. |
 | `multiple(bool = true)` | `false` | Several options at once; the query gets a list. |
 | `toggle(bool = true)` | `false` | An on/off chip without options; the query gets `true`. |

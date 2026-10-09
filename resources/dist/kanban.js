@@ -359,34 +359,42 @@ export default function packstubKanban(config) {
 
         /* ------------------------------------------------------------ the URL */
 
-        // `?search=…&filters[owner_id][]=1&filters[mine]=1`: only the filters the board
-        // defines are read, and the server checks every value against the options again.
+        // `?search=…&filters[owner_id][0]=1&filters[owner_id][1]=2&filters[mine]=1`: only the
+        // filters the board defines are read, only values among their options are kept
+        // (the server checks them again), and a toggle is on for 1, true, on or yes.
         readUrl() {
             let found = false
 
             try {
                 const params = new URLSearchParams(window.location.search)
-                const search = params.get('search')
+                const search = (params.get('search') || '').trim()
 
                 if (search && config.searchable) {
                     this.search = search
                     found = true
                 }
 
+                const sent = {}
+                for (const [key, value] of params) {
+                    const m = key.match(/^filters\[([^\]]+)\](?:\[\d*\])?$/)
+                    if (m && value !== '') (sent[m[1]] ??= []).push(value)
+                }
+
                 for (const filter of this.filters) {
-                    const values = [...params.getAll(`filters[${filter.name}][]`), ...params.getAll(`filters[${filter.name}]`)].filter((v) => v !== '')
+                    const values = sent[filter.name] || []
+                    const offered = filter.options.map((o) => o.value)
+                    const known = [...new Set(values.filter((v) => offered.includes(v)))]
 
-                    if (! values.length) continue
-
-                    if (filter.type === 'multiple') {
-                        this.active[filter.name] = [...new Set(values)]
-                    } else if (filter.type === 'toggle') {
-                        this.active[filter.name] = ['1', 'true', 'on'].includes(values[0].toLowerCase())
-                    } else {
-                        this.active[filter.name] = values[0]
+                    if (filter.type === 'multiple' && known.length) {
+                        this.active[filter.name] = known
+                        found = true
+                    } else if (filter.type === 'toggle' && values.length && ['1', 'true', 'on', 'yes'].includes(values[0].toLowerCase())) {
+                        this.active[filter.name] = true
+                        found = true
+                    } else if (filter.type === 'select' && known.length) {
+                        this.active[filter.name] = known[0]
+                        found = true
                     }
-
-                    found = true
                 }
             } catch (e) {}
 
@@ -394,35 +402,38 @@ export default function packstubKanban(config) {
         },
 
         // Mirrors the state into the query string in place (no history entry); an empty
-        // search or filter is removed, so an untouched board keeps a clean URL.
+        // search or filter is removed, so an untouched board keeps a clean URL. Lists use
+        // indexed keys, and the brackets stay readable: Livewire's own URL sync (a #[Url]
+        // property elsewhere on the page) rewrites the query string and would keep only
+        // the last of repeated `[]` keys.
         writeUrl() {
             if (! config.url) return
 
             try {
                 const url = new URL(window.location.href)
-                const params = url.searchParams
-
-                for (const key of [...params.keys()]) {
-                    if (key === 'search' || key.startsWith('filters[')) params.delete(key)
-                }
+                const pairs = [...url.searchParams].filter(([key]) => key !== 'search' && ! key.startsWith('filters['))
 
                 const search = this.search.trim()
-                if (search) params.set('search', search)
+                if (search) pairs.push(['search', search])
 
                 for (const filter of this.filters) {
                     const value = this.active[filter.name]
 
                     if (filter.type === 'multiple') {
-                        for (const v of value) params.append(`filters[${filter.name}][]`, v)
+                        value.forEach((v, i) => pairs.push([`filters[${filter.name}][${i}]`, v]))
                     } else if (filter.type === 'toggle') {
-                        if (value === true) params.set(`filters[${filter.name}]`, '1')
+                        if (value === true) pairs.push([`filters[${filter.name}]`, '1'])
                     } else if (value !== '') {
-                        params.set(`filters[${filter.name}]`, value)
+                        pairs.push([`filters[${filter.name}]`, value])
                     }
                 }
 
-                if (url.href !== window.location.href) {
-                    window.history.replaceState(window.history.state, '', url)
+                const encode = (s) => encodeURIComponent(s).replace(/%5B/gi, '[').replace(/%5D/gi, ']').replace(/%20/g, '+')
+                const query = pairs.map(([k, v]) => encode(k) + '=' + encode(v)).join('&')
+                const next = url.pathname + (query ? '?' + query : '') + url.hash
+
+                if (next !== window.location.pathname + window.location.search + window.location.hash) {
+                    window.history.replaceState(window.history.state, '', next)
                 }
             } catch (e) {}
         },

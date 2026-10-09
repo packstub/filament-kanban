@@ -63,7 +63,7 @@
                             <strong x-text="isActive(filter) ? active[filter.name].length : t.all"></strong>
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
                         </button>
-                        <div class="pk-menu pk-menu-start" x-show="menu === 'filter:' + filter.name" x-cloak x-transition.opacity.duration.100ms x-on:click.outside="menu = null">
+                        <div class="pk-menu pk-menu-start pk-filter-menu" x-show="menu === 'filter:' + filter.name" x-cloak x-transition.opacity.duration.100ms x-on:click.outside="menu = null">
                             <template x-for="option in filter.options" :key="option.value">
                                 <label class="pk-menu-item">
                                     <input type="checkbox" :checked="active[filter.name].includes(option.value)" x-on:change="toggleOption(filter, option.value)">

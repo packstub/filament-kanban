@@ -97,6 +97,11 @@ trait InteractsWithKanban
         // Card and create actions need Filament's action system on the component.
         $actions = $this instanceof HasActions;
 
+        // A toggle without query() fails here, on the first render, not when a user clicks it.
+        foreach ($board->getFilters() as $filter) {
+            $filter->assertUsable();
+        }
+
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
             'columns' => $board->getState(),

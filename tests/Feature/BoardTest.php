@@ -165,8 +165,39 @@ it('applies a toggle filter only when it is on, through its required query', fun
         ->and(array_column($board->getCards('todo', filters: ['urgent' => ['1']]), 'title'))->toBe(['Urgent', 'Calm'])
         ->and(array_column($board->getCards('todo'), 'title'))->toBe(['Urgent', 'Calm'])
         ->and(fn () => board()->filters([Filter::make('urgent')->toggle()])->getCards('todo', filters: ['urgent' => true]))->toThrow(LogicException::class, 'query()')
+        ->and(fn () => Filter::make('urgent')->toggle()->assertUsable())->toThrow(LogicException::class)
         ->and(Filter::make('urgent')->toggle()->toggle(false)->getType())->toBe('select')
-        ->and(Filter::make('owner_id')->multiple()->multiple(false)->getType())->toBe('select');
+        ->and(Filter::make('owner_id')->multiple()->multiple(false)->getType())->toBe('select')
+        ->and(Filter::make('owner_id')->multiple()->toggle(false)->getType())->toBe('multiple')
+        ->and(Filter::make('urgent')->toggle()->multiple(false)->getType())->toBe('toggle');
+});
+
+it('resolves the options once per request, and not at all while the filter is not set', function () {
+    $acme = project('Acme');
+    task('A', 'todo', ['project_id' => $acme->id]);
+    task('B');
+    $calls = 0;
+
+    $board = board()->summarize(fn (Builder $query) => $query->count())->filters([
+        Filter::make('project_id')->multiple()->options(function () use (&$calls, $acme) {
+            $calls++;
+
+            return [$acme->id => 'Acme'];
+        }),
+        Filter::make('title')->options(function () use (&$calls) {
+            $calls++;
+
+            return ['A' => 'A'];
+        }),
+    ]);
+
+    $board->getState();
+    $board->getState(filters: ['project_id' => [], 'title' => '']);
+    expect($calls)->toBe(0);
+
+    $state = $board->getState(filters: ['project_id' => [(string) $acme->id], 'title' => 'A']);
+    expect($calls)->toBe(2) // once each, over the counts, three columns of cards and three summaries
+        ->and($state[0]['count'])->toBe(1);
 });
 
 it('keeps the search and filters in the URL unless told otherwise', function () {

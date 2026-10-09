@@ -2,9 +2,11 @@
 
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\View\ViewException;
 use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
+use Packstub\Kanban\Filter;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
@@ -135,6 +137,29 @@ it('tells the browser each filter\'s type and whether to keep the state in the U
     };
 
     expect(Livewire::test($component::class)->instance()->getKanbanConfig()['url'])->toBeFalse();
+});
+
+it('refuses to render a toggle filter without a query, before anyone clicks it', function () {
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->filters([Filter::make('mine')->toggle()]);
+        }
+    };
+
+    // The config is built inside the view, so the exception arrives wrapped by Blade (once per nested view).
+    try {
+        Livewire::test($component::class);
+        $this->fail('The page rendered a toggle without a query.');
+    } catch (ViewException $e) {
+        while ($e instanceof ViewException && $e->getPrevious()) {
+            $e = $e->getPrevious();
+        }
+
+        expect($e)->toBeInstanceOf(LogicException::class)
+            ->and($e->getMessage())->toContain('Kanban filter [mine] is a toggle');
+    }
 });
 
 it('refreshes as many cards as the browser already shows', function () {

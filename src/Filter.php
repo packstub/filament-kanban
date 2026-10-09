@@ -18,6 +18,9 @@ class Filter
     /** @var array<string|int, string>|Closure */
     protected array|Closure $options = [];
 
+    /** The options, resolved once per request (a closure usually runs a query). */
+    protected ?array $resolvedOptions = null;
+
     protected ?Closure $query = null;
 
     /** 'select', 'multiple' or 'toggle' */
@@ -41,6 +44,7 @@ class Filter
     public function options(array|Closure $options): static
     {
         $this->options = $options;
+        $this->resolvedOptions = null;
 
         return $this;
     }
@@ -60,7 +64,11 @@ class Filter
     /** Several options at once: query() gets a list, the default applies `whereIn`. */
     public function multiple(bool $condition = true): static
     {
-        $this->type = $condition ? 'multiple' : 'select';
+        if ($condition) {
+            $this->type = 'multiple';
+        } elseif ($this->type === 'multiple') {
+            $this->type = 'select';
+        }
 
         return $this;
     }
@@ -68,7 +76,11 @@ class Filter
     /** A single on/off chip with the filter's label, no options; query() gets `true` and is required. */
     public function toggle(bool $condition = true): static
     {
-        $this->type = $condition ? 'toggle' : 'select';
+        if ($condition) {
+            $this->type = 'toggle';
+        } elseif ($this->type === 'toggle') {
+            $this->type = 'select';
+        }
 
         return $this;
     }
@@ -92,7 +104,25 @@ class Filter
             return [];
         }
 
-        return $this->options instanceof Closure ? app()->call($this->options) : $this->options;
+        return $this->resolvedOptions ??= $this->options instanceof Closure ? app()->call($this->options) : $this->options;
+    }
+
+    public function hasQuery(): bool
+    {
+        return $this->query !== null;
+    }
+
+    /**
+     * A toggle has no default query, so it needs one: checked when the board's config
+     * is built (the first render), not the first time a user turns the chip on.
+     *
+     * @throws LogicException
+     */
+    public function assertUsable(): void
+    {
+        if ($this->type === 'toggle' && ! $this->query) {
+            throw new LogicException("Kanban filter [{$this->name}] is a toggle: give it a query() closure, there is no default.");
+        }
     }
 
     /** 'select', 'multiple' or 'toggle' */
@@ -118,14 +148,17 @@ class Filter
      */
     public function apply(Builder $query, mixed $value): void
     {
+        // Nothing chosen: leave the query alone without resolving the options (a query of their own).
+        if (blank($value)) {
+            return;
+        }
+
         if ($this->type === 'toggle') {
             if (! $this->isOn($value)) {
                 return;
             }
 
-            if (! $this->query) {
-                throw new LogicException("Kanban filter [{$this->name}] is a toggle: give it a query() closure, there is no default.");
-            }
+            $this->assertUsable();
 
             ($this->query)($query, true);
 
@@ -172,11 +205,17 @@ class Filter
      */
     protected function known(array $values): array
     {
+        $values = array_filter($values, fn ($value) => (is_int($value) || is_string($value)) && ! blank($value));
+
+        if ($values === []) {
+            return [];
+        }
+
         $options = $this->getOptions();
         $known = [];
 
         foreach ($values as $value) {
-            if (blank($value) || ! (is_int($value) || is_string($value)) || ! array_key_exists($value, $options)) {
+            if (! array_key_exists($value, $options)) {
                 continue;
             }
 
