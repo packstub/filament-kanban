@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Conditionable;
 use Packstub\Kanban\Events\CardMoved;
@@ -405,7 +406,12 @@ class Board
     public function getState(string $search = '', array $filters = [], array $loaded = []): array
     {
         $columns = $this->getColumns();
-        $counts = $this->counts($search, $filters);
+        $counts = $this->countsOf($this->filteredQuery($search, $filters));
+
+        // What the WIP limits count, unfiltered: one grouped query, only when a column has a limit.
+        $totals = array_filter($columns, fn (Column $column) => $column->getLimit() !== null) !== []
+            ? $this->countsOf($this->baseQuery())
+            : [];
 
         return array_map(fn (Column $column) => [
             'name' => $column->getName(),
@@ -416,7 +422,7 @@ class Board
             'draggable' => $column->isDraggable(),
             'accepts' => $column->getAccepts(),
             'limit' => $column->getLimit(),
-            'total' => $column->getLimit() === null ? null : $this->columnQuery($column->getName())->count(),
+            'total' => $column->getLimit() === null ? null : ($totals[$column->getName()] ?? 0),
             'creatable' => $this->createAction !== null && $column->isDroppable() && $column->isCreatable(),
             'summary' => $this->getSummary($column->getName(), $search, $filters),
             'count' => $counts[$column->getName()] ?? 0,
@@ -440,12 +446,9 @@ class Board
         $query = $this->filteredQuery($search, $filters)
             ->where($this->qualifiedColumnAttribute(), $columnName);
 
-        foreach ($this->orderingFor($column) as [$attribute, $direction]) {
-            $query->orderBy($attribute, $direction);
-        }
+        $this->applyOrdering($query, $column);
 
         return $query
-            ->orderBy($query->getModel()->getQualifiedKeyName())
             ->offset(max(0, $offset))
             ->limit(min(max($this->perColumn, $limit), $this->perColumn * 10))
             ->get()
@@ -495,28 +498,51 @@ class Board
             if ($this->isFull($target)) {
                 throw new MoveRejected(__('packstub-kanban::kanban.full', ['column' => $target->getLabel(), 'limit' => $target->getLimit()]));
             }
+        } elseif (! $this->isReorderable() || ! $source->isDraggable()) {
+            return $this->presentCard($record);
+        }
 
-            // A MoveRejected thrown here refuses with its message; anything else (a
-            // database error, a bug in the closure) propagates for the caller to report:
-            // its message is not for the user (see InteractsWithKanban::kanbanMove()).
+        // The move and the column's new order land together or not at all.
+        try {
+            $record->getConnection()->transaction(function () use ($record, $from, $to, $order) {
+                $this->saveMove($record, $from, $to, $order);
+            });
+        } finally {
+            // Saved or rolled back, the cached model no longer tells where the card is.
+            unset($this->records[(string) $id]);
+        }
+
+        return $this->presentCard($record->fresh() ?? $record);
+    }
+
+    /** @param  list<string>|null  $order */
+    protected function saveMove(Model $record, string $from, string $to, ?array $order): void
+    {
+        if ($from !== $to) {
+            // A MoveRejected thrown here refuses with its message (and rolls back);
+            // anything else (a database error, a bug in the closure) propagates for
+            // the caller to report: its message is not for the user (see
+            // InteractsWithKanban::kanbanMove()).
             if ($this->moveUsing) {
                 ($this->moveUsing)($record, $to, $from);
             } else {
                 $record->setAttribute($this->columnAttribute, $to)->save();
             }
 
-            CardMoved::dispatch($record, $from, $to, $this->key);
-        } elseif (! $this->isReorderable() || ! $source->isDraggable()) {
-            return $this->presentCard($record);
+            // Once the (outermost) transaction commits. The move is saved by then: a
+            // listener that throws is reported, it does not turn the move into a failure.
+            $record->getConnection()->afterCommit(function () use ($record, $from, $to) {
+                try {
+                    CardMoved::dispatch($record, $from, $to, $this->key);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            });
         }
 
         if ($this->isReorderable() && $order !== null) {
             $this->storeOrder($to, $order);
         }
-
-        unset($this->records[(string) $id]);
-
-        return $this->presentCard($record->fresh() ?? $record);
     }
 
     /* ------------------------------------------------------------------ internals */
@@ -575,12 +601,12 @@ class Board
     }
 
     /**
-     * @param  array<string, mixed>  $filters
+     * Cards per column in one grouped query.
+     *
      * @return array<string, int>
      */
-    protected function counts(string $search, array $filters): array
+    protected function countsOf(Builder $query): array
     {
-        $query = $this->filteredQuery($search, $filters);
         $attribute = $this->qualifiedColumnAttribute($query);
 
         return $query->reorder()
@@ -592,34 +618,103 @@ class Board
             ->all();
     }
 
-    /** @return list<array{0: string, 1: string}> */
-    protected function orderingFor(Column $column): array
+    /** The order of a column's cards: position (a null one last), the column's sort, then the key. */
+    protected function applyOrdering(Builder $query, Column $column): Builder
     {
         if ($this->orderAttribute) {
-            return [[$this->orderAttribute, 'asc'], ...array_filter([$column->getSort() ?? $this->sort])];
+            $position = $query->getGrammar()->wrap($query->qualifyColumn($this->orderAttribute));
+            $query->orderByRaw("case when {$position} is null then 1 else 0 end")->orderByRaw("{$position} asc");
         }
 
-        return array_values(array_filter([$column->getSort() ?? $this->sort]));
+        if ($sort = $column->getSort() ?? $this->sort) {
+            $query->orderBy(...$sort);
+        }
+
+        return $query->orderBy($query->getModel()->getQualifiedKeyName());
     }
 
-    /** @param  list<string>  $order */
-    protected function storeOrder(string $column, array $order): void
+    /**
+     * Renumber the column: the ids the browser sent (its loaded cards, top to bottom)
+     * get 1..n, every other card of the column follows in its current order. Only
+     * positions that change are written, and the rest of the column is never read
+     * whole: the cards beyond the loaded page are left alone when they already sit
+     * above n, shifted up together (one statement) when they collide, and the ones
+     * without a position are numbered after them (a few hundred per statement).
+     *
+     * @param  list<string>  $order
+     */
+    protected function storeOrder(string $columnName, array $order): void
     {
-        $query = $this->baseQuery();
+        if (! $column = $this->getColumn($columnName)) {
+            return;
+        }
 
-        $ids = $query
-            ->where($this->qualifiedColumnAttribute($query), $column)
-            ->whereKey($order)
-            ->pluck($query->getModel()->getQualifiedKeyName())
-            ->map(fn ($id) => (string) $id)
+        $query = $this->columnQuery($columnName);
+        $keyName = $query->getModel()->getQualifiedKeyName();
+        $position = $query->qualifyColumn($this->orderAttribute);
+        $update = $query->toBase()->reorder();
+        $numeric = in_array($query->getModel()->getKeyType(), ['int', 'integer'], true);
+
+        $current = $order === [] ? [] : (clone $update)
+            ->whereIn($keyName, array_values(array_unique(array_map('strval', $order))))
+            ->pluck($position, $keyName)
+            ->mapWithKeys(fn ($value, $id) => [(string) $id => $value === null ? null : (int) $value])
             ->all();
 
-        $position = 0;
+        $sent = [];
 
         foreach ($order as $id) {
-            if (in_array((string) $id, $ids, true)) {
-                $this->baseQuery()->whereKey($id)->toBase()->update([$this->orderAttribute => ++$position]);
+            if (array_key_exists($id = (string) $id, $current) && ! isset($sent[$id])) {
+                $sent[$id] = count($sent) + 1;
             }
+        }
+
+        $this->writePositions($update, $keyName, $numeric, array_filter($sent, fn (int $value, string $id) => $current[$id] !== $value, ARRAY_FILTER_USE_BOTH));
+
+        $tail = (clone $update)->whereNotIn($keyName, array_keys($sent));
+        $range = (clone $tail)->whereNotNull($position)
+            ->selectRaw('min('.$query->getGrammar()->wrap($position).') as kanban_low, max('.$query->getGrammar()->wrap($position).') as kanban_high')
+            ->first();
+
+        $shift = $range?->kanban_low === null ? 0 : max(0, count($sent) + 1 - (int) $range->kanban_low);
+
+        if ($shift > 0) {
+            (clone $tail)
+                ->whereNotNull($position)
+                ->update([$this->orderAttribute => DB::raw($query->getGrammar()->wrap($position)." + {$shift}")]);
+        }
+
+        $next = max(count($sent), $range?->kanban_high === null ? 0 : (int) $range->kanban_high + $shift);
+
+        $unnumbered = [];
+
+        foreach ($this->applyOrdering((clone $query)->whereNotIn($keyName, array_keys($sent))->whereNull($position), $column)->toBase()->pluck($keyName) as $id) {
+            $unnumbered[(string) $id] = ++$next;
+        }
+
+        $this->writePositions($update, $keyName, $numeric, $unnumbered);
+    }
+
+    /**
+     * Set positions by id, a CASE statement per few hundred cards.
+     *
+     * @param  array<string, int>  $positions
+     */
+    protected function writePositions(QueryBuilder $update, string $keyName, bool $numeric, array $positions): void
+    {
+        $connection = $update->getConnection();
+        $key = $update->getGrammar()->wrap($keyName);
+
+        foreach (array_chunk($positions, 500, preserve_keys: true) as $chunk) {
+            $cases = implode(' ', array_map(
+                fn (string $id, int $value) => 'when '.($numeric ? (int) $id : $connection->escape($id)).' then '.$value,
+                array_keys($chunk),
+                $chunk,
+            ));
+
+            (clone $update)
+                ->whereIn($keyName, array_map('strval', array_keys($chunk)))
+                ->update([$this->orderAttribute => DB::raw("case {$key} {$cases} end")]);
         }
     }
 
