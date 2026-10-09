@@ -54,10 +54,11 @@ trait InteractsWithKanban
      *
      * @param  list<string>|null  $order
      * @param  array<string, mixed>  $filters  the board's current ones, for the column summaries
+     * @param  string|null  $origin  the tab's token, echoed in the broadcast so that tab ignores it
      * @return array{ok: bool, card?: array<string, mixed>, summaries?: array<string, string|null>, message?: string}
      */
     #[Renderless]
-    public function kanbanMove(string $id, string $to, ?array $order = null, string $search = '', array $filters = []): array
+    public function kanbanMove(string $id, string $to, ?array $order = null, string $search = '', array $filters = [], ?string $origin = null): array
     {
         $board = $this->getKanban();
         $from = $board->findRecord($id)?->getAttribute($board->getColumnAttribute());
@@ -74,6 +75,7 @@ trait InteractsWithKanban
         }
 
         $this->kanbanMoved($id, $to, $card);
+        $board->broadcastChange($id, (string) $from, $to, $origin);
 
         return [
             'ok' => true,
@@ -106,6 +108,7 @@ trait InteractsWithKanban
             'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
+            'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent()] : null,
             'cardActions' => array_map(fn ($action) => [
                 'name' => $action->getName(),
                 'label' => $action->getLabel(),

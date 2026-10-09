@@ -49,7 +49,7 @@ trait KanbanActions
         }
     }
 
-    /** Once the action has run, the browser reloads the board (keeping its search and filters). */
+    /** Once the action has run, the browser reloads the board (keeping its search and filters) and the other tabs are told. */
     protected function kanbanRefreshAfter(Action $action): void
     {
         $after = static::kanbanProperty($action, 'after');
@@ -58,6 +58,12 @@ trait KanbanActions
             $result = $after ? $action->evaluate($after) : null;
 
             $this->dispatch('packstub-kanban-refresh');
+
+            $arguments = $action->getArguments();
+            $this->getKanban()->broadcastChange(
+                id: isset($arguments['kanbanRecord']) ? (string) $arguments['kanbanRecord'] : null,
+                origin: isset($arguments['kanbanOrigin']) ? (string) $arguments['kanbanOrigin'] : null,
+            );
 
             return $result;
         });

@@ -1,9 +1,11 @@
 <?php
 
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
 use Packstub\Kanban\Board;
+use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
@@ -75,6 +77,39 @@ it('keeps an exception thrown while saving out of the notification: reported, an
 
     expect($task->fresh()->status)->toBe('todo')
         ->and($other->fresh()->status)->toBe('todo');
+});
+
+it('tells the other tabs about a move only when the board broadcasts, with the tab\'s own token', function () {
+    Event::fake([BoardChanged::class]);
+    $task = task('Build');
+
+    Livewire::test(TaskBoard::class)
+        ->call('kanbanMove', (string) $task->id, 'doing', null, '', [], 'tab1')
+        ->assertReturned(fn ($result) => $result['ok'] === true);
+
+    Event::assertNotDispatched(BoardChanged::class);
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->key('tasks')->broadcast(fn () => 'team.1.kanban');
+        }
+    };
+
+    $test = Livewire::test($component::class);
+
+    expect($test->instance()->getKanbanConfig()['broadcast'])->toBe(['channel' => 'team.1.kanban', 'event' => '.kanban.changed']);
+
+    $test->call('kanbanMove', (string) $task->id, 'done', null, '', [], 'tab1');
+
+    Event::assertDispatched(BoardChanged::class, fn (BoardChanged $e) => $e->channel === 'team.1.kanban'
+        && $e->broadcastWith() === ['board' => 'tasks', 'id' => (string) $task->id, 'from' => 'doing', 'to' => 'done', 'origin' => 'tab1']);
+
+    $test->call('kanbanMove', (string) $task->id, 'doing') // refused: doing accepts cards from todo only
+        ->assertReturned(fn ($result) => $result['ok'] === false);
+
+    Event::assertDispatchedTimes(BoardChanged::class, 1);
 });
 
 it('never moves into a column this user cannot see', function () {

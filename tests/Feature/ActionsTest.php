@@ -1,6 +1,9 @@
 <?php
 
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
+use Packstub\Kanban\Board;
+use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Tests\Fixtures\PlainBoard;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
@@ -65,6 +68,25 @@ it('never runs a card action on a record outside the board', function () {
         ->assertNotDispatched('packstub-kanban-refresh');
 
     expect($hidden->fresh()->priority)->toBe(0);
+});
+
+it('tells the other tabs after an action ran, when the board broadcasts', function () {
+    Event::fake([BoardChanged::class]);
+    $task = task('Low');
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->broadcast('team.1.kanban');
+        }
+    };
+
+    Livewire::test($component::class)
+        ->callAction('bump', arguments: ['kanbanRecord' => (string) $task->id, 'kanbanOrigin' => 'tab1'])
+        ->assertDispatched('packstub-kanban-refresh');
+
+    Event::assertDispatched(BoardChanged::class, fn (BoardChanged $e) => $e->id === (string) $task->id && $e->origin === 'tab1' && $e->from === null);
 });
 
 it('creates a card in the column it was asked from', function () {

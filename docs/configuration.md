@@ -21,6 +21,8 @@ public function kanban(Board $board): Board
         ->moveUsing(fn (Deal $deal, string $to, string $from) => $deal->moveTo($to))
         ->perColumn(50)                                    // cards per column before "Load more"
         ->poll('30s')                                      // pick up other people's changes
+        ->broadcast()                                      // or at once, with Laravel Echo
+        ->undo(10)                                         // "Undo" on the move notification, for 10 s
         ->focusMode(false)                                 // keep the panel's sidebar
         ->key('deals');                                    // where the browser keeps folded / hidden columns
 }
@@ -53,6 +55,24 @@ Each column loads `perColumn()` cards (50 by default). The rest come in pages as
 ## Polling
 
 `poll('10s')` (or `'1m'`, or milliseconds) reloads the board every so often, so a shared board picks up other people's changes. It skips a beat while a card is being dragged or saved, while a menu is open, and while the tab is in the background. Columns keep the cards already loaded with "Load more" (up to ten pages), so a poll never scrolls anyone back to the top.
+
+## Realtime with Echo
+
+With [Laravel Echo](https://laravel.com/docs/broadcasting) on the page, `broadcast()` replaces polling: after every change (a move, a card action, a create) the server broadcasts a `Packstub\Kanban\Events\BoardChanged` event, queued, on a private channel, and every other tab showing the board reloads at once. The tab that made the change recognises its own token in the event and ignores it; a burst of events is one request, and a reload never interrupts a card in the air.
+
+```php
+->broadcast()                                   // private channel "kanban.<key>", event ".kanban.changed"
+->broadcast(fn () => 'tenant.'.tenant()->id.'.kanban') // your own channel name (a string or a closure)
+->broadcast('deals', '.deals.changed')          // and your own event name
+```
+
+The channel is yours to authorise, as any private channel, in `routes/channels.php`:
+
+```php
+Broadcast::channel('kanban.{board}', fn (User $user) => $user->can('viewAny', Deal::class));
+```
+
+The event carries `board` (the key), `id`, `from`, `to` and `origin`, so your own listener (`Echo.private('kanban.deals').listen('.kanban.changed', ...)`) can use it too. Without Echo on the page the option does nothing; `poll()` keeps working, and both may be set. `CardMoved` is unchanged: it stays the event your server-side listeners use.
 
 ## Focus mode
 
@@ -105,6 +125,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from)`. |
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
+| `broadcast(string\|Closure\|null, string)` | off | Reload the other tabs through Echo: the private channel (default `kanban.<key>`) and the event name (`.kanban.changed`). |
 | `focusMode(bool)` | `true` | Hide the sidebar on the board page. |
 | `key(string)` | the page class | Where the browser keeps a user's view. |
 

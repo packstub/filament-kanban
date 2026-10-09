@@ -4,6 +4,7 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
+- Realtime with Laravel Echo: `broadcast()` sends a queued `BoardChanged` event on a private channel (`kanban.<key>` by default, or yours) after every move, card action and create, and the other tabs showing the board reload at once instead of polling; the tab that made the change ignores its own event, and a burst of events is one request. `poll()` still works without Echo, and both may be set.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.
 - Fixed: a horizontal swipe over a column scrolls the board; the card list no longer captures the gesture (it scrolls vertically only, without overscroll containment), so a short column also lets the page scroll past it.

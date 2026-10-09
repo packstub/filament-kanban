@@ -20,6 +20,9 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// This tab's token: sent with every change, echoed in the broadcast, so the tab ignores its own.
+const ORIGIN = Math.random().toString(36).slice(2, 12)
+
 export default function packstubKanban(config) {
     return {
         columns: config.columns,
@@ -74,15 +77,39 @@ export default function packstubKanban(config) {
                     }
                 }, config.poll)
             }
+
+            // With Laravel Echo on the page, another tab's change reloads the board at once;
+            // a burst of events is one request. Echo may arrive after the board (Filament
+            // dispatches EchoLoaded when it does).
+            if (config.broadcast) {
+                this.onEcho = () => this.listen()
+                window.Echo ? this.listen() : window.addEventListener('EchoLoaded', this.onEcho, { once: true })
+            }
         },
 
         destroy() {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
+            window.removeEventListener('EchoLoaded', this.onEcho)
             clearInterval(this.poller)
+            clearTimeout(this.echoTimer)
+            if (this.channel) window.Echo?.leave(config.broadcast.channel)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
+        },
+
+        listen() {
+            if (this.channel || ! window.Echo) return
+
+            this.channel = window.Echo.private(config.broadcast.channel)
+            this.channel.listen(config.broadcast.event, (payload) => {
+                if (payload?.origin && payload.origin === ORIGIN) return
+                clearTimeout(this.echoTimer)
+                this.echoTimer = setTimeout(() => {
+                    if (! this.dragging && ! this.pending) this.refresh(true)
+                }, 300)
+            })
         },
 
         /* ------------------------------------------------------------ drag and drop */
@@ -190,7 +217,7 @@ export default function packstubKanban(config) {
                 this.notify(message, 'danger')
             }
 
-            this.$wire.kanbanMove(id, to, order, this.search, this.active)
+            this.$wire.kanbanMove(id, to, order, this.search, this.active, ORIGIN)
                 .then((result) => {
                     if (! result?.ok) {
                         return undo(result?.message || this.t.failed)
@@ -246,7 +273,7 @@ export default function packstubKanban(config) {
 
         runAction(name, card) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecord: card.id })
+            this.$wire.mountAction(name, { kanbanRecord: card.id, kanbanOrigin: ORIGIN })
         },
 
         open(event, card) {
@@ -261,7 +288,7 @@ export default function packstubKanban(config) {
         },
 
         create(column) {
-            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name })
+            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name, kanbanOrigin: ORIGIN })
         },
 
         targets(from) {

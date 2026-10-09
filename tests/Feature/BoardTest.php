@@ -2,11 +2,13 @@
 
 use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Event;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
+use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Filter;
@@ -261,6 +263,24 @@ it('dispatches CardMoved when a card changes column, not when it is reordered', 
 
     $board->move((string) $task->id, 'doing');
     Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->record->is($task) && $e->from === 'todo' && $e->to === 'doing' && $e->board === 'tasks');
+});
+
+it('broadcasts on a private channel named after the key unless told otherwise, with Echo\'s event name', function () {
+    expect(board()->isBroadcasting())->toBeFalse()
+        ->and(board()->getBroadcastChannel())->toBeNull();
+
+    $board = board()->key('App\\Filament\\Pages\\Deals')->broadcast();
+
+    expect($board->getBroadcastChannel())->toBe('kanban.App.Filament.Pages.Deals')
+        ->and($board->getBroadcastEvent())->toBe('.kanban.changed')
+        ->and(board()->broadcast(fn () => 'tenant.7.kanban', '.deals')->getBroadcastChannel())->toBe('tenant.7.kanban');
+
+    $event = new BoardChanged('tenant.7.kanban', '.kanban.changed', 'deals', '3', 'todo', 'doing', 'tab1');
+
+    expect($event->broadcastOn())->toBeInstanceOf(PrivateChannel::class)
+        ->and($event->broadcastOn()->name)->toBe('private-tenant.7.kanban')
+        ->and($event->broadcastAs())->toBe('kanban.changed')
+        ->and($event->broadcastWith())->toBe(['board' => 'deals', 'id' => '3', 'from' => 'todo', 'to' => 'doing', 'origin' => 'tab1']);
 });
 
 it('reads the poll interval', function (string|int|null $interval, ?int $ms) {

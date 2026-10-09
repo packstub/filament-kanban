@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Conditionable;
+use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 
@@ -60,6 +61,10 @@ class Board
     protected ?Closure $summarize = null;
 
     protected ?int $poll = null;
+
+    protected string|Closure|null $broadcastChannel = null;
+
+    protected ?string $broadcastEvent = null;
 
     /** @var list<Column>|null */
     protected ?array $resolvedColumns = null;
@@ -236,6 +241,20 @@ class Board
         return $this;
     }
 
+    /**
+     * Broadcast a BoardChanged event (queued, on a private channel) after every change,
+     * so the other tabs listening with Laravel Echo reload at once instead of polling.
+     * The channel is yours to authorise in routes/channels.php; by default it is
+     * `kanban.<key>`. The event name keeps Echo's leading dot (the name as broadcast).
+     */
+    public function broadcast(string|Closure|null $channel = null, string $event = '.kanban.changed'): static
+    {
+        $this->broadcastChannel = $channel;
+        $this->broadcastEvent = $event;
+
+        return $this;
+    }
+
     /** Where the browser remembers folded and hidden columns; defaults to the page's class. */
     public function key(string $key): static
     {
@@ -321,6 +340,37 @@ class Board
     public function getPoll(): ?int
     {
         return $this->poll;
+    }
+
+    public function isBroadcasting(): bool
+    {
+        return $this->broadcastEvent !== null;
+    }
+
+    /** The private channel's name (without `private-`), as Echo and routes/channels.php know it. */
+    public function getBroadcastChannel(): ?string
+    {
+        if (! $this->isBroadcasting()) {
+            return null;
+        }
+
+        $channel = $this->broadcastChannel instanceof Closure ? app()->call($this->broadcastChannel) : $this->broadcastChannel;
+
+        // A class name is the default key; a channel name cannot carry backslashes.
+        return (string) ($channel ?? 'kanban.'.str_replace('\\', '.', $this->key ?? 'board'));
+    }
+
+    public function getBroadcastEvent(): ?string
+    {
+        return $this->broadcastEvent;
+    }
+
+    /** Tell the other tabs (when the board broadcasts): the origin is the token of the tab that made the change, which ignores it. */
+    public function broadcastChange(?string $id = null, ?string $from = null, ?string $to = null, ?string $origin = null): void
+    {
+        if ($this->isBroadcasting()) {
+            BoardChanged::dispatch($this->getBroadcastChannel(), $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin);
+        }
     }
 
     /** @return class-string<Model> */
