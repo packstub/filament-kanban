@@ -44,7 +44,7 @@ Your own `hidden()`, `visible()`, `authorize()` and `disabled()` rules keep work
 ->cardAction('edit')
 ```
 
-A click opens the slide-over; Ctrl/⌘-click and middle-click still open the card's URL in a new tab when it has one. A drag never counts as a click.
+A click opens the slide-over; a middle click still opens the card's URL in a new tab when it has one (Ctrl/⌘- and Shift-click [select](#bulk-selection) the card). A drag never counts as a click.
 
 ## Create a card in a column
 
@@ -91,6 +91,34 @@ Column::make('lost')->actions([
 ```
 
 The action is bound to its column when the board registers it, under the name `column:<column>:<action>`, so two columns may both have an `archive`. One action object may be given to several columns: the first keeps it, the others get a copy, so such a shared action must take `$query` and `$column` as closure arguments rather than reach them through `$this` (a closure bound in a subclass's `setUp()` keeps pointing at the original, and the board throws a `LogicException` rather than run it on the wrong column). An action of its own is used as it is, `$this` included. Modals, forms, confirmations, `authorize()`, `hidden()`, `visible()` and `disabled()` work as on any action, with the column injected; an action the app hides is left out of the menu. The server resolves the column from the request again and never trusts the browser past the column's name and its current search and filters (validated as on a refresh): an action of a hidden column is hidden and refused. The board reloads once the action has run.
+
+## Bulk selection
+
+Selection is on once the board has `bulkActions()`, or with `->selectable()` for "Move to…" alone (`->selectable(false)` turns it off, and Ctrl/⌘-click opens the card's URL in a new tab as before). Ctrl/⌘-click selects a card (and deselects it), Shift-click selects every card between the last selected one and this one in the same column, and a checkbox on each card does the same on hover and on touch screens. While cards are selected a bar takes the toolbar's place: the count, "Move to…", the board's bulk actions and Clear (or Escape). A selected card is not opened on click. A card that leaves the board (deleted by an action, filtered out, gone on a poll) leaves the selection too.
+
+`bulkActions()` lists the actions on that bar. A `Packstub\Kanban\Actions\BulkAction` is a Filament action over the selection, the way a table's `BulkAction` is over its selected rows: inject `$records` (an Eloquent collection) or `Builder $query`.
+
+```php
+use Illuminate\Database\Eloquent\Collection;
+use Packstub\Kanban\Actions\BulkAction;
+
+->bulkActions([
+    BulkAction::make('assign')
+        ->label('Assign to me')
+        ->icon(Heroicon::OutlinedUser)
+        ->action(fn (Collection $records) => $records->each->update(['owner_id' => auth()->id()])),
+    BulkAction::make('delete')
+        ->color('danger')
+        ->requiresConfirmation()
+        ->action(fn (Collection $records) => $records->each->delete()),
+])
+```
+
+Mind the import: `Packstub\Kanban\Actions\BulkAction`, not Filament's `Filament\Actions\BulkAction` (or `DeleteBulkAction`), which read a table's selection and have no place on a board; the board refuses them with a clear error.
+
+The records are loaded through the board's `query()`, so a selection never reaches a record the user cannot see on the board; ids outside it are dropped (a selection stops at 500 cards; a larger one is refused as a whole, not trimmed), and the action is hidden when nothing selected is on the board. The board reloads once the action has run. A plain `Action` works on the bar too, with the selected ids in `$arguments['kanbanRecords']`.
+
+"Move to…" offers the columns every selected card may go to, by the same rules as a drag; see [Moving several cards](moves.md#moving-several-cards).
 
 ## Header actions
 

@@ -16,6 +16,8 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 - **[Column summaries](columns.md#summaries)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](cards.md)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
 - **[Search, filters and paging](configuration.md#search)**: instant search, select filters and infinite scroll per column.
+- **[Swimlanes](swimlanes.md)**: rows by assignee, priority or any attribute, derived from the data or defined, folded and remembered.
+- **[Bulk selection](actions.md#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
 - **[Shared boards](configuration.md#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, and an [Undo](moves.md#undo) on every move.
 
 ## Guides
@@ -25,7 +27,8 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 | [Installation](installation.md) | Requirements, the first board page, and embedding a board in any Livewire component |
 | [Columns](columns.md) | Enum columns, who sees and moves what, drop rules, WIP limits, summaries, folding and order |
 | [Cards](cards.md) | What a card shows: eyebrow, title, amount, badges, meta, avatars, accent and link |
-| [Actions](actions.md) | Card actions, the click action, creating a card in a column, and column actions |
+| [Actions](actions.md) | Card actions, the click action, bulk actions on a selection, creating a card in a column, and column actions |
+| [Swimlanes](swimlanes.md) | Rows by a second attribute: derived or defined lanes, what a drop sets, folding and paging |
 | [Moves and events](moves.md) | What a move does, undo, `moveUsing()`, reordering, the `CardMoved` event and browser events |
 | [Configuration](configuration.md) | Search, filters, paging, polling, realtime with Echo, focus mode, styling, and the full fluent API |
 

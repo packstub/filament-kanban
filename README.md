@@ -17,11 +17,13 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 ## Features
 
 - **[Instant drag and drop](#instant-moves)**: a drop lands at once; if the server refuses, the card slides back with the reason.
-- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
+- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns, locked cards and WIP limits.
 - **[Filament actions on cards](#card-actions) and [columns](https://packstub.dev/docs/filament-kanban/actions#column-actions)**: edit in a slide-over, delete or run your own actions, [create in a column](#create-in-a-column), act on a whole column.
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
 - **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
+- **[Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)**: rows by assignee, priority or any attribute, derived from the data or defined.
+- **[Bulk selection](https://packstub.dev/docs/filament-kanban/actions#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
 - **[Shared boards](https://packstub.dev/docs/filament-kanban/configuration#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, browser events, and an Undo on every move.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 
@@ -169,7 +171,7 @@ Read more: [Columns](https://packstub.dev/docs/filament-kanban/columns#summaries
 
 ## Cards
 
-`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `badge($label, $color, $condition)`, `meta([...])` (empty parts dropped), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()` and `actions([...])`.
+`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `description()` (two muted lines), `badge($label, $color, $condition, icon: ...)`, `meta([...])` (empty parts dropped), `due($date)` (red once past, amber on the day), `progress($done, $total)` (a thin bar), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()`, `actions([...])` and `locked()` (one card that stays put, refused by the server too).
 
 Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 

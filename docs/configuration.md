@@ -17,6 +17,8 @@ public function kanban(Board $board): Board
         ->summarize(fn (Builder $query) => Number::currency($query->sum('amount'), 'USD'))
         ->cardActions([EditAction::make()->schema([...]), DeleteAction::make()])
         ->cardAction('edit')                               // a click opens the edit modal
+        ->bulkActions([BulkAction::make('assign')->action(fn (Collection $records) => ...)])
+        ->swimlanes('owner_id', fn () => User::all()->map(fn ($u) => Lane::make($u->id)->label($u->name))->all())
         ->createAction(CreateAction::make()->schema([...]))
         ->moveUsing(fn (Deal $deal, string $to, string $from) => $deal->moveTo($to))
         ->perColumn(50)                                    // cards per column before "Load more"
@@ -55,6 +57,8 @@ Each column loads `perColumn()` cards (50 by default). The rest come in pages as
 ## Polling
 
 `poll('10s')` (or `'1m'`, or milliseconds) reloads the board every so often, so a shared board picks up other people's changes. It skips a beat while a card is being dragged or saved, while a menu is open, and while the tab is in the background. Columns keep the cards already loaded with "Load more" (up to ten pages), so a poll never scrolls anyone back to the top.
+
+What a load (the first render, a poll, a search, the refresh after an action) costs: one grouped count for the column counts, one more for the WIP totals when a column has a `limit()`, one query per column for its cards, plus your `summarize()` per column. The page loads this once, when the board is first drawn; a re-render of the page afterwards (an action's modal, a form submit) does not read the board again, since the browser keeps it.
 
 ## Realtime with Echo
 
@@ -95,7 +99,7 @@ The board page hides the panel's sidebar so the columns get the whole width; a b
 
 ## Remembered per user
 
-Folded and hidden columns and the sidebar toggle are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
+Folded and hidden columns, folded lanes and the sidebar toggle are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
 
 ## Styling
 
@@ -136,8 +140,11 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `summarize(?Closure)` | off | `fn (Builder $query, Column $column): ?string`. |
 | `cardActions(array)` | `[]` | Filament actions in each card's menu. |
 | `cardAction(?string)` | off | The card action a click runs. |
+| `bulkActions(array)` | `[]` | Actions on the selection bar; `BulkAction` gets `$records`. |
+| `selectable(bool\|Closure)` | with bulk actions | Let users select cards and move them together. |
+| `swimlanes(?string, array\|Closure\|class-string\|null)` | off | Rows by an attribute: `Lane`s, an enum, or derived from the data. |
 | `createAction(?Action)` | off | A "+" on each droppable column. |
-| `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from)`. |
+| `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from, ?string $lane)`. |
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
 | `undo(bool\|int)` | `5` | "Undo" on the notification after a move, for this many seconds; `false` for none. |
@@ -148,8 +155,12 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 
 ### Column
 
-`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`, `actions()`. See [Columns](columns.md) and [Column actions](actions.md#column-actions).
+`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `icon()`, `description()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`, `actions()`. See [Columns](columns.md) and [Column actions](actions.md#column-actions).
+
+### Lane
+
+`make($value)`, `fromEnum($enum)`, `label()`, `color()`, `collapsed()`. See [Swimlanes](swimlanes.md).
 
 ### Card
 
-`make()`, `eyebrow()`, `title()`, `aside()`, `badge()`, `meta()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`. See [Cards](cards.md).
+`make()`, `eyebrow()`, `title()`, `aside()`, `description()`, `badge()`, `meta()`, `due()`, `progress()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`, `locked()`, `draggable()`. See [Cards](cards.md).

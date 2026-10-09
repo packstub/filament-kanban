@@ -38,6 +38,7 @@ abstract class TestCase extends Orchestra
             $table->string('status');
             $table->unsignedInteger('sort')->nullable();
             $table->unsignedInteger('priority')->default(0);
+            $table->string('assignee')->nullable();
         });
     }
 

@@ -5,13 +5,29 @@ A column is one value of the board's column attribute (`columnAttribute('status'
 ```php
 ->columnAttribute('stage')
 ->columns([
-    Column::make('lead')->color('gray'),
-    Column::make('qualified')->label('Qualified')->color('sky')->accepts(['lead']),
+    Column::make('lead')->color('gray')->icon('heroicon-m-inbox'),
+    Column::make('qualified')->label('Qualified')->color('sky')->accepts(['lead'])->description('Budget and timeline confirmed'),
     Column::make('won')->color('emerald')->accepts(['negotiation'])->sortBy('updated_at', 'desc'),
 ])
 ```
 
 The label defaults to the name in headline case (`in_review` → "In Review"). A colour is a name (`gray`, `slate`, `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `emerald`, `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`, `fuchsia`, `pink`, `rose`, or your panel's `primary`, `success`, `warning`, `danger`, `info`) or any CSS colour.
+
+## Header
+
+| Method | What it shows |
+| --- | --- |
+| `label()` | The title. A string is escaped; an `Htmlable` (`new HtmlString('…')`, a rendered view) is drawn as HTML. Takes a closure. |
+| `color()` | The dot before the title; it also marks the column in the "Columns" and "Move to" menus. |
+| `icon()` | A Heroicon (name or enum) next to the dot. Takes a closure. |
+| `description()` | A tooltip on the header: what belongs in the column, who moves cards out. Takes a closure. |
+
+```php
+Column::make('review')
+    ->label(fn () => new HtmlString('Review <small>(QA)</small>'))
+    ->icon('heroicon-m-eye')
+    ->description('Awaiting a reviewer; only reviewers move cards out'),
+```
 
 ## Columns from an enum
 
@@ -56,7 +72,7 @@ Column::make('done')
     ->droppable(fn () => auth()->user()->can('ship', Task::class)),
 ```
 
-While a card is being dragged, columns it may go to are highlighted and the others are dimmed. The server checks the same rules on every move, whatever the browser sent: see [Moves and events](moves.md).
+While a card is being dragged, columns it may go to are highlighted and the others are dimmed. The server checks the same rules on every move, whatever the browser sent: see [Moves and events](moves.md). For one card that must stay put while the rest of its column moves, see [Locking a card](cards.md#locking-a-card).
 
 ## WIP limits
 
