@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
+use LogicException;
 
 /**
  * A Filament action over the board's selected cards, the way a table's BulkAction
@@ -57,6 +58,8 @@ class BulkAction extends Action
 
     public function getSelectedRecordsQuery(): Builder
     {
-        return ($this->kanbanRecordsQuery)();
+        return $this->kanbanRecordsQuery
+            ? ($this->kanbanRecordsQuery)()
+            : throw new LogicException("The bulk action [{$this->getName()}] is not on a board: register it with Board::bulkActions().");
     }
 }
