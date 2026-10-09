@@ -1,5 +1,6 @@
 <?php
 
+use Filament\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
@@ -100,6 +101,54 @@ it('keeps an action of its own as it is, so closures bound in setUp() through $t
 
     expect($todo->fresh()->status)->toBe('archived')
         ->and($done->fresh()->status)->toBe('archived');
+});
+
+it('copies an object that is already a card action before making it a column action', function () {
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            $touch = Action::make('touch')->action(fn () => null);
+
+            return parent::kanban($board)
+                ->cardActions([$touch])
+                ->columns([Column::make('todo')->actions([$touch]), Column::make('doing')]);
+        }
+    };
+    $task = task('A');
+
+    $test = Livewire::test($component::class);
+    $config = $test->instance()->getKanbanConfig();
+
+    expect(array_column($config['cardActions'], 'name'))->toBe(['touch'])
+        ->and(array_column($config['columns'][0]['actions'], 'name'))->toBe(['column:todo:touch']);
+
+    $test->callAction('touch', arguments: ['kanbanRecord' => (string) $task->id])
+        ->assertHasNoErrors()
+        ->callAction('column:todo:touch', arguments: ['kanbanColumn' => 'todo'])
+        ->assertHasNoErrors();
+});
+
+it('refuses to run a shared $this-based column action on another column\'s cards', function () {
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            $archive = ArchiveColumnAction::make('archive');
+
+            return parent::kanban($board)->columns([
+                Column::make('todo')->actions([$archive]),
+                Column::make('done')->actions([$archive]),
+            ]);
+        }
+    };
+    $todo = task('A', 'todo');
+    $done = task('B', 'done');
+
+    expect(fn () => Livewire::test($component::class)->callAction('column:done:archive', arguments: ['kanbanColumn' => 'done']))
+        ->toThrow(LogicException::class, 'shared across columns')
+        ->and($todo->fresh()->status)->toBe('todo')
+        ->and($done->fresh()->status)->toBe('done');
 });
 
 it('shrugs off arguments of the wrong type', function () {

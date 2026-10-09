@@ -22,6 +22,27 @@ trait KanbanActions
     {
         $board = $this->getKanban();
 
+        // An action object given to several columns (or already a card or create action) is
+        // copied for every column but the first, before any of them is touched; an action of
+        // its own is used as it is, so closures bound in setUp() keep their $this.
+        $seen = new SplObjectStorage;
+
+        foreach ([...$board->getCardActions(), ...array_filter([$board->getCreateAction()])] as $action) {
+            $seen->attach($action);
+        }
+
+        foreach ($board->getAllColumns() as $column) {
+            $column->actions(array_map(function (Action $action) use ($seen) {
+                if ($seen->contains($action)) {
+                    return clone $action;
+                }
+
+                $seen->attach($action);
+
+                return $action;
+            }, $column->getActions()));
+        }
+
         foreach ($board->getCardActions() as $action) {
             $action->record(fn () => $board->findRecord($action->getArguments()['kanbanRecord'] ?? null));
 
@@ -48,23 +69,6 @@ trait KanbanActions
             $this->kanbanRefreshAfter($action);
 
             $this->cacheAction($action);
-        }
-
-        // An action object given to several columns is copied for every column but the first,
-        // before any of them is touched; an action of its own is used as it is, so closures
-        // bound in setUp() keep their $this.
-        $seen = new SplObjectStorage;
-
-        foreach ($board->getAllColumns() as $column) {
-            $column->actions(array_map(function (Action $action) use ($seen) {
-                if ($seen->contains($action)) {
-                    return clone $action;
-                }
-
-                $seen->attach($action);
-
-                return $action;
-            }, $column->getActions()));
         }
 
         // Column actions are cached as `column:<column>:<name>`, so two columns may share a

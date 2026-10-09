@@ -4,6 +4,7 @@ namespace Packstub\Kanban\Actions;
 
 use Filament\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
+use LogicException;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Column;
 
@@ -48,6 +49,18 @@ class ColumnAction extends Action
     public function getColumnQuery(): Builder
     {
         $arguments = $this->getArguments();
+
+        // A copy of a shared object whose closures reach $this still points at the original,
+        // bound to the first column: its query would be the wrong column's cards. The action
+        // being run is the one mounted on the component; it must be this one, on this column.
+        $mounted = $this->getLivewire()?->getMountedAction();
+        $column = $this->column?->getName();
+
+        if ((isset($arguments['kanbanColumn']) && $arguments['kanbanColumn'] !== $column)
+            || ($mounted instanceof ColumnAction && $mounted !== $this && $mounted->getColumn()?->getName() !== $column)) {
+            throw new LogicException("The column action [{$this->getName()}] object is shared across columns: give each column its own instance, or take \$query / \$column as closure arguments instead of \$this.");
+        }
+
         $search = $arguments['kanbanSearch'] ?? '';
         $filters = $arguments['kanbanFilters'] ?? [];
 
