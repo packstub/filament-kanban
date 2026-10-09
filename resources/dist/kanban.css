@@ -196,7 +196,7 @@ div.pk { visibility: visible; animation: none; }
     font-variant-numeric: tabular-nums;
 }
 
-.pk-fold, .pk-create {
+.pk-fold, .pk-create, .pk-col-menu {
     width: 1.625rem;
     height: 1.625rem;
     border-color: transparent;
@@ -205,8 +205,13 @@ div.pk { visibility: visible; animation: none; }
     opacity: 0;
 }
 
-.pk-col:hover .pk-fold, .pk-fold:focus-visible, .pk-col:hover .pk-create, .pk-create:focus-visible { opacity: 1; }
-.pk-create:hover { color: var(--pk-text); }
+.pk-col:hover .pk-fold, .pk-fold:focus-visible, .pk-col:hover .pk-create, .pk-create:focus-visible,
+.pk-col:hover .pk-col-menu, .pk-col-menu:focus-visible, .pk-col-menu[aria-expanded="true"] { opacity: 1; }
+.pk-create:hover, .pk-col-menu:hover { color: var(--pk-text); }
+
+/* the column's own menu opens under its header, above the cards */
+.pk-col-menu-wrap { display: flex; }
+.pk-col-menu-wrap .pk-menu { z-index: 41; }
 
 /* a column at its WIP limit */
 .pk-col-full .pk-count { color: var(--danger-600); font-weight: 600; }
@@ -261,7 +266,7 @@ div.pk { visibility: visible; animation: none; }
 .pk-col-folded .pk-cards, .pk-col-folded .pk-col-empty, .pk-col-folded .pk-more { display: none; }
 .pk-col-folded .pk-col-head { flex-direction: column; gap: 0.6rem; height: 100%; padding: 0.75rem 0; }
 .pk-col-folded .pk-col-head h3 { writing-mode: vertical-rl; }
-.pk-col-folded .pk-summary, .pk-col-folded .pk-create { display: none; }
+.pk-col-folded .pk-summary, .pk-col-folded .pk-create, .pk-col-folded .pk-col-menu-wrap { display: none; }
 .pk-col-folded .pk-count { margin: 0; }
 .pk-col-folded .pk-fold { order: -1; margin: 0; opacity: 1; transform: rotate(180deg); }
 
@@ -388,7 +393,7 @@ div.pk { visibility: visible; animation: none; }
 .pk-card:hover .pk-card-menu, .pk-card-menu:focus-visible, .pk-card-menu[aria-expanded="true"] { opacity: 1; }
 .pk-card-menu:hover { color: var(--pk-text); background: var(--gray-100); }
 .dark .pk-card-menu:hover { background: rgb(255 255 255 / 0.08); }
-@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold, .pk-create { opacity: 1; } }
+@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold, .pk-create, .pk-col-menu { opacity: 1; } }
 
 /* "Move to" opens inside the card, so the column's scroll never clips it */
 .pk-card-popover { position: static; min-width: 0; margin: 0 0.4rem 0.4rem; box-shadow: none; }

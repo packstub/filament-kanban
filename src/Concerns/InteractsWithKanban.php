@@ -2,6 +2,7 @@
 
 namespace Packstub\Kanban\Concerns;
 
+use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
@@ -39,12 +40,14 @@ trait InteractsWithKanban
      * @return array{columns: list<array<string, mixed>>, icons: array<string, string>, lanes?: list<array<string, mixed>>}
      */
     #[Renderless]
-    public function kanbanRefresh(string $search = '', array $filters = [], array $loaded = []): array
+    public function kanbanRefresh(string $search = '', array $filters = [], array $loaded = [], bool $whole = false): array
     {
         $board = $this->getKanban();
+        $columns = $board->getState($search, $filters, $loaded);
 
         return [
-            'columns' => $board->getState($search, $filters, $loaded),
+            // A board drawn again takes its columns whole, their header actions included.
+            'columns' => $whole ? $this->kanbanColumnsWithActions($columns) : $columns,
             'icons' => $board->getIcons(),
             ...($board->hasLanes() ? ['lanes' => $this->kanbanLanes($board)] : []),
         ];
@@ -70,10 +73,12 @@ trait InteractsWithKanban
      *
      * @param  list<string>|null  $order
      * @param  array<string, mixed>  $filters  the board's current ones, for the column summaries
+     * @param  string|null  $lane  with swimlanes, the lane the card was dropped in
+     * @param  string|null  $origin  the tab's token, echoed in the broadcast so that tab ignores it
      * @return array{ok: bool, card?: array<string, mixed>, summaries?: array<string, string|null>, icons?: array<string, string>, message?: string}
      */
     #[Renderless]
-    public function kanbanMove(string $id, string $to, ?array $order = null, string $search = '', array $filters = [], ?string $lane = null): array
+    public function kanbanMove(string $id, string $to, ?array $order = null, string $search = '', array $filters = [], ?string $lane = null, ?string $origin = null): array
     {
         $board = $this->getKanban();
         $from = $board->findRecord($id)?->getAttribute($board->getColumnAttribute());
@@ -90,6 +95,10 @@ trait InteractsWithKanban
         }
 
         $this->kanbanMoved($id, $to, $card);
+        // A drop back where it was on a board that does not reorder saved nothing: no one to tell.
+        if ((string) $from !== $to || $lane !== null || ($order !== null && $board->isReorderable())) {
+            $board->broadcastChange($id, (string) $from, $to, $origin);
+        }
 
         return [
             'ok' => true,
@@ -111,7 +120,7 @@ trait InteractsWithKanban
      * @return array{ok: bool, moved: list<array<string, mixed>>, refused: list<array{id: string, message: string}>, summaries: array<string, string|null>, message?: string}
      */
     #[Renderless]
-    public function kanbanMoveMany(array $ids, string $to, string $search = '', array $filters = [], ?string $lane = null): array
+    public function kanbanMoveMany(array $ids, string $to, string $search = '', array $filters = [], ?string $lane = null, ?string $origin = null): array
     {
         $board = $this->getKanban();
         $moved = [];
@@ -145,6 +154,10 @@ trait InteractsWithKanban
             $moved[] = $card;
         }
 
+        if ($moved !== []) {
+            $board->broadcastChange(origin: $origin);
+        }
+
         return [
             'ok' => $moved !== [],
             'moved' => $moved,
@@ -160,6 +173,64 @@ trait InteractsWithKanban
      * @param  array<string, mixed>  $card
      */
     protected function kanbanMoved(string $id, string $to, array $card): void {}
+
+    /**
+     * What the browser needs to draw an action in a menu.
+     *
+     * @return array{name: string, label: mixed, icon: string|null, color: string|null}
+     */
+    protected function kanbanActionSummary(Action $action): array
+    {
+        return [
+            'name' => $action->getName(),
+            'label' => $action->getLabel(),
+            'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
+            'color' => is_string($color = $action->getColor()) ? $color : null,
+        ];
+    }
+
+    /**
+     * The columns' state with each one's header actions (on components with Filament's
+     * action system), for a board drawn whole.
+     *
+     * @param  list<array<string, mixed>>  $columns
+     * @return list<array<string, mixed>>
+     */
+    protected function kanbanColumnsWithActions(array $columns): array
+    {
+        $actions = $this instanceof HasActions;
+
+        return array_map(fn (array $column) => [
+            ...$column,
+            'actions' => $actions ? $this->kanbanColumnActionSummaries($column['name']) : [],
+        ], $columns);
+    }
+
+    /**
+     * A column's actions as the menu shows them: the ones the app hides (hidden(),
+     * visible(), authorize()) are left out, evaluated with the column as argument.
+     *
+     * @return list<array{name: string, label: mixed, icon: string|null, color: string|null}>
+     */
+    protected function kanbanColumnActionSummaries(string $columnName): array
+    {
+        $summaries = [];
+
+        foreach ($this->getKanban()->getColumn($columnName)?->getActions() ?? [] as $action) {
+            $previous = $action->hasArguments() ? $action->getArguments() : null;
+            $action->arguments(['kanbanColumn' => $columnName]);
+
+            try {
+                if (! $action->isHidden()) {
+                    $summaries[] = $this->kanbanActionSummary($action);
+                }
+            } finally {
+                $action->arguments($previous);
+            }
+        }
+
+        return $summaries;
+    }
 
     /**
      * What the view hands to the browser, once per request. The board's state (cards,
@@ -191,7 +262,7 @@ trait InteractsWithKanban
 
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $this->kanbanDrawn ? null : $board->getState(),
+            'columns' => $this->kanbanDrawn ? null : $this->kanbanColumnsWithActions($board->getState()),
             'icons' => $board->getIcons(),
             'lanes' => $board->hasLanes() ? $this->kanbanLanes($board) : null,
             'perColumn' => $board->getPerColumn(),
@@ -202,19 +273,11 @@ trait InteractsWithKanban
             'maxSelection' => Board::MAX_SELECTION,
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
-            'cardActions' => array_map(fn ($action) => [
-                'name' => $action->getName(),
-                'label' => $action->getLabel(),
-                'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
-                'color' => is_string($color = $action->getColor()) ? $color : null,
-            ], $actions ? $board->getCardActions() : []),
+            'undo' => $board->getUndo(),
+            'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent(), 'board' => $board->getKey()] : null,
+            'cardActions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getCardActions() : []),
             'cardAction' => $board->getCardAction(),
-            'bulkActions' => array_map(fn ($action) => [
-                'name' => $action->getName(),
-                'label' => $action->getLabel(),
-                'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
-                'color' => is_string($color = $action->getColor()) ? $color : null,
-            ], $actions ? $board->getBulkActions() : []),
+            'bulkActions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getBulkActions() : []),
             'createAction' => $actions && ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
             'i18n' => __('packstub-kanban::kanban'),
         ];

@@ -20,6 +20,9 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// This tab's token: sent with every change, echoed in the broadcast, so the tab ignores its own.
+const ORIGIN = Math.random().toString(36).slice(2, 12)
+
 // Without swimlanes every column is one cell: the board draws this single, nameless lane.
 const NO_LANE = { value: null }
 
@@ -53,6 +56,7 @@ export default function packstubKanban(config) {
         refreshTimer: null,
         refreshSeq: 0,
         pending: 0,
+        stale: false,
         drawn: config.columns !== null, // false until a board drawn again has its columns
         retries: 0,
 
@@ -113,16 +117,59 @@ export default function packstubKanban(config) {
                     }
                 }, config.poll)
             }
+
+            // With Laravel Echo on the page, another tab's change reloads the board at once;
+            // a burst of events is one request. Echo may arrive after the board (Filament
+            // dispatches EchoLoaded when it does).
+            if (config.broadcast) {
+                this.$watch('menu', (menu) => menu || this.settle())
+                this.onEcho = () => this.listen()
+                window.Echo ? this.listen() : window.addEventListener('EchoLoaded', this.onEcho, { once: true })
+            }
         },
 
         destroy() {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
+            window.removeEventListener('EchoLoaded', this.onEcho)
             clearInterval(this.poller)
+            clearTimeout(this.echoTimer)
+            // Only this board's listener: the channel may be shared with other boards and the app.
+            if (this.channel) this.channel.stopListening(config.broadcast.event, this.onChange)
+            document.removeEventListener('visibilitychange', this.onVisible)
             clearInterval(this.clock)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
+        },
+
+        listen() {
+            if (this.channel || ! window.Echo) return
+
+            this.onChange = (payload) => {
+                if (payload?.origin && payload.origin === ORIGIN) return
+                // Another board on the same channel (two keys mapped to one channel name).
+                if (payload?.board != null && config.broadcast.board != null && payload.board !== config.broadcast.board) return
+                clearTimeout(this.echoTimer)
+                this.echoTimer = setTimeout(() => {
+                    this.stale = true
+                    this.settle()
+                }, 300)
+            }
+            this.onVisible = () => this.settle()
+            document.addEventListener('visibilitychange', this.onVisible)
+
+            this.channel = window.Echo.private(config.broadcast.channel)
+            this.channel.listen(config.broadcast.event, this.onChange)
+        },
+
+        // A change that arrived while a card was in the air, a menu was open or the tab was in
+        // the background is loaded once the drop has settled, the menu closed, the tab shown.
+        settle() {
+            if (this.stale && ! this.dragging && ! this.pending && ! this.menu && ! document.hidden) {
+                this.stale = false
+                this.refresh(true)
+            }
         },
 
         /* ------------------------------------------------------------ drag and drop */
@@ -181,7 +228,7 @@ export default function packstubKanban(config) {
             this.dragging = null
 
             if (from === to && event.from.dataset.lane === lane && event.oldDraggableIndex === event.newDraggableIndex) {
-                return
+                return this.settle()
             }
 
             // Put the node back where Sortable took it from and let Alpine move it from
@@ -201,8 +248,33 @@ export default function packstubKanban(config) {
             this.$nextTick(() => this.$refs.board.querySelector(`.pk-cards[data-column="${CSS.escape(to)}"]${cell}`)?.scrollTo({ top: 0, behavior: 'smooth' }))
         },
 
+        // Undo is a move back, through every rule and moveUsing() again; a refusal shows as usual.
+        undo(detail) {
+            if (! detail || detail.key !== config.key) return
+            this.move(detail.id, detail.to, detail.from, config.reorderable ? detail.index : 0, detail.lane ?? undefined, { undo: true })
+        },
+
+        // Only when the way back is open (a one-way accepts(), a column that is not draggable): the server decides anyway.
+        // With swimlanes, `lane` is the lane the card came from (it goes back there).
+        offerUndo(id, from, to, index, lane = undefined, toLane = undefined) {
+            if (! config.undo || ! window.FilamentNotification || ! window.FilamentNotificationAction || ! this.canDrop(to, from, toLane, lane)) return
+
+            new window.FilamentNotification()
+                .title(this.t.moved_to.replace(':column', this.findColumn(to)?.label ?? to))
+                .success()
+                .duration(config.undo * 1000)
+                .actions([
+                    new window.FilamentNotificationAction('undo')
+                        .label(this.t.undo)
+                        .button()
+                        .close()
+                        .dispatch('packstub-kanban-undo', { key: config.key, id, from, to, index, lane: lane ?? null }),
+                ])
+                .send()
+        },
+
         // `index` is the position in the target cell (the column, or the column's lane with swimlanes).
-        move(id, from, to, index, lane = undefined) {
+        move(id, from, to, index, lane = undefined, options = {}) {
             const source = this.findColumn(from)
             const target = this.findColumn(to)
             const at = source.cards.findIndex((c) => c.id === id)
@@ -211,6 +283,8 @@ export default function packstubKanban(config) {
                 return
             }
 
+            // Where the card sat in its own cell, for an Undo that puts it back there.
+            const cellAt = this.lanes ? this.cardsIn(source, { value: source.cards[at].lane }).indexOf(source.cards[at]) : at
             const [card] = source.cards.splice(at, 1)
             const fromLane = card.lane
             const laned = this.lanes && lane !== undefined
@@ -244,7 +318,7 @@ export default function packstubKanban(config) {
                 this.notify(message, 'danger')
             }
 
-            this.$wire.kanbanMove(id, to, order, this.search, this.active, laned ? lane : null)
+            this.$wire.kanbanMove(id, to, order, this.search, this.active, laned ? lane : null, ORIGIN)
                 .then((result) => {
                     if (! result?.ok) {
                         return undo(result?.message || this.t.failed)
@@ -259,6 +333,7 @@ export default function packstubKanban(config) {
 
                     if (from !== to || (laned && lane !== fromLane)) {
                         this.$dispatch('kanban-card-moved', { id, from, to, ...(laned ? { lane } : {}), card: result.card })
+                        if (! options.undo) this.offerUndo(id, from, to, cellAt, laned ? fromLane : undefined, laned ? lane : undefined)
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)
@@ -271,7 +346,10 @@ export default function packstubKanban(config) {
                     }
                 })
                 .catch(() => undo(this.t.offline))
-                .finally(() => this.pending--)
+                .finally(() => {
+                    this.pending--
+                    this.settle()
+                })
         },
 
         canDrop(from, to, fromLane = undefined, toLane = undefined) {
@@ -318,7 +396,7 @@ export default function packstubKanban(config) {
 
         runAction(name, card) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecord: card.id })
+            this.$wire.mountAction(name, { kanbanRecord: card.id, kanbanOrigin: ORIGIN })
         },
 
         open(event, card, column = null, lane = NO_LANE) {
@@ -338,8 +416,14 @@ export default function packstubKanban(config) {
             if (! card.url) event.preventDefault()
         },
 
+        // The server resolves the column again and takes the search and filters as it does on a refresh.
+        runColumnAction(name, column) {
+            this.menu = null
+            this.$wire.mountAction(name, { kanbanColumn: column.name, kanbanSearch: this.search, kanbanFilters: this.active, kanbanOrigin: ORIGIN })
+        },
+
         create(column) {
-            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name })
+            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name, kanbanOrigin: ORIGIN })
         },
 
         targets(from) {
@@ -419,7 +503,7 @@ export default function packstubKanban(config) {
 
         runBulkAction(name) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecords: this.selectedCards().map(([, card]) => card.id) })
+            this.$wire.mountAction(name, { kanbanRecords: this.selectedCards().map(([, card]) => card.id), kanbanOrigin: ORIGIN })
         },
 
         // Every selected card moves at once; the ones the server refuses come back, with one notification.
@@ -466,7 +550,7 @@ export default function packstubKanban(config) {
 
             this.pending++
 
-            this.$wire.kanbanMoveMany(moves.map((m) => m.card.id), to, this.search, this.active, null)
+            this.$wire.kanbanMoveMany(moves.map((m) => m.card.id), to, this.search, this.active, null, ORIGIN)
                 .then((result) => {
                     if (! result || (! result.ok && result.message)) {
                         moves.forEach(undo)
@@ -504,7 +588,10 @@ export default function packstubKanban(config) {
                     moves.forEach(undo)
                     this.notify(this.t.offline, 'danger')
                 })
-                .finally(() => this.pending--)
+                .finally(() => {
+                    this.pending--
+                    this.settle()
+                })
         },
 
         /* ------------------------------------------------------------ search, filters, paging */
@@ -546,7 +633,7 @@ export default function packstubKanban(config) {
                 ? Object.fromEntries(this.lanes.map((l) => [l.value, this.loadedIn(c, l)]))
                 : c.cards.length])) : {}
 
-            this.$wire.kanbanRefresh(this.search, this.active, loaded).catch(() => null).then((result) => {
+            this.$wire.kanbanRefresh(this.search, this.active, loaded, ! this.drawn).catch(() => null).then((result) => {
                 if (seq !== this.refreshSeq) {
                     return
                 }
@@ -556,7 +643,13 @@ export default function packstubKanban(config) {
                     this.refreshTimer = setTimeout(() => this.refresh(), 1000 * 2 ** this.retries++)
                 }
 
-                if (! result || (background && (this.dragging || this.pending))) {
+                if (! result) {
+                    return
+                }
+
+                // A drag started meanwhile: keep the answer for after the drop (see settle()).
+                if (background && (this.dragging || this.pending)) {
+                    this.stale = true
                     return
                 }
 

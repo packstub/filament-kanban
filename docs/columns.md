@@ -120,6 +120,10 @@ Cards are ordered by the board's `sortBy()`, which a column can override:
 
 With `->reorderable('sort')` users also order cards by hand; see [Moves and events](moves.md#reordering).
 
+## Column actions
+
+`Column::actions([...])` puts a `⋯` menu in the column's header with Filament actions on the whole column (archive everything here, export the column), the column's cards injected as `$query`. See [Column actions](actions.md#column-actions).
+
 ## Creating in a column
 
 With a [create action](actions.md#create-a-card-in-a-column) on the board, every droppable column gets a "+" in its header. `creatable(false)` leaves a column out:

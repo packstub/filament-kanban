@@ -10,6 +10,15 @@
 
 "Move to…" in the card's menu does the same without dragging, for touch screens and keyboards.
 
+## Undo
+
+After a move, a notification says "Moved to Done" with an **Undo** button, for five seconds. Undo is a normal move back to the column the card came from (at its old position when the board is reorderable, else at the top): every column rule and your `moveUsing()` run again, `CardMoved` fires for the reverse move, and a refusal shows as any other. Nothing is restored behind the rules' back.
+
+```php
+->undo(10)    // offer it for ten seconds
+->undo(false) // no undo
+```
+
 ## Your own move logic
 
 `moveUsing()` replaces the default save. Throw `MoveRejected` to refuse the move: the card goes back and the message is shown.

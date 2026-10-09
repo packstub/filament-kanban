@@ -14,6 +14,8 @@ use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Conditionable;
+use Packstub\Kanban\Events\BoardChanged;
+use Packstub\Kanban\Events\BoardChangedNow;
 use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 
@@ -70,6 +72,17 @@ class Board
     protected ?Closure $summarize = null;
 
     protected ?int $poll = null;
+
+    protected ?int $undo = 5;
+
+    protected string|Closure|null $broadcastChannel = null;
+
+    protected ?string $broadcastEvent = null;
+
+    protected bool $broadcastNow = false;
+
+    /** @var list<Column>|null */
+    protected ?array $allColumns = null;
 
     /** @var list<Column>|null */
     protected ?array $resolvedColumns = null;
@@ -128,6 +141,7 @@ class Board
     public function columns(array|Closure|string $columns): static
     {
         $this->columns = is_string($columns) ? Column::fromEnum($columns) : $columns;
+        $this->allColumns = null;
         $this->resolvedColumns = null;
 
         return $this;
@@ -319,6 +333,44 @@ class Board
         return $this;
     }
 
+    /**
+     * An "Undo" on the notification after a move, for this many seconds (5 by default;
+     * false for none). Undoing is a move back through every rule and moveUsing(), so
+     * nothing is restored behind their back.
+     */
+    public function undo(bool|int $condition = true): static
+    {
+        $this->undo = match (true) {
+            $condition === false => null,
+            $condition === true => 5,
+            default => max(1, $condition),
+        };
+
+        return $this;
+    }
+
+    /**
+     * Broadcast a BoardChanged event on a private channel after every change, so the
+     * other tabs listening with Laravel Echo reload at once instead of polling. Queued
+     * (after the transaction commits; a worker must run) unless $now. The channel is
+     * yours to authorise in routes/channels.php; by default it is `kanban.<key slug>`.
+     * The event name is normalised to Echo's form, with a leading dot.
+     */
+    public function broadcast(string|Closure|null $channel = null, string $event = '.kanban.changed', bool $now = false): static
+    {
+        $this->broadcastChannel = $channel;
+        $this->broadcastEvent = '.'.ltrim($event, '.');
+        $this->broadcastNow = $now;
+
+        return $this;
+    }
+
+    /** broadcast() without the queue: sent during the request, and a broadcaster down costs the request its time. */
+    public function broadcastNow(string|Closure|null $channel = null, string $event = '.kanban.changed'): static
+    {
+        return $this->broadcast($channel, $event, now: true);
+    }
+
     /** Where the browser remembers folded and hidden columns; defaults to the page's class. */
     public function key(string $key): static
     {
@@ -333,9 +385,15 @@ class Board
     public function getColumns(): array
     {
         return $this->resolvedColumns ??= array_values(array_filter(
-            $this->columns instanceof Closure ? app()->call($this->columns) : $this->columns,
+            $this->getAllColumns(),
             fn (Column $column) => $column->isVisible(),
         ));
+    }
+
+    /** @return list<Column> every column, hidden ones included: their actions are registered too, then hidden */
+    public function getAllColumns(): array
+    {
+        return $this->allColumns ??= array_values($this->columns instanceof Closure ? app()->call($this->columns) : $this->columns);
     }
 
     public function getColumn(string $name): ?Column
@@ -475,6 +533,66 @@ class Board
         return $this->poll;
     }
 
+    /** Seconds the "Undo" stays offered after a move; null when off. */
+    public function getUndo(): ?int
+    {
+        return $this->undo;
+    }
+
+    public function isBroadcasting(): bool
+    {
+        return $this->broadcastEvent !== null;
+    }
+
+    /** The private channel's name (without `private-`), as Echo and routes/channels.php know it. */
+    public function getBroadcastChannel(): ?string
+    {
+        if (! $this->isBroadcasting()) {
+            return null;
+        }
+
+        $channel = $this->broadcastChannel instanceof Closure ? app()->call($this->broadcastChannel) : $this->broadcastChannel;
+
+        // A class name is the default key; a channel name must not carry backslashes or
+        // dots (a `{board}` route parameter in routes/channels.php stops at a dot), nor
+        // colons. Each is replaced, never dropped, so `project.1.5` and `project.15` differ.
+        return (string) ($channel ?? 'kanban.'.strtolower(trim(preg_replace('/[^A-Za-z0-9_\-=@,;]+/', '-', $this->key ?? 'board'), '-')));
+    }
+
+    public function isBroadcastingNow(): bool
+    {
+        return $this->broadcastNow;
+    }
+
+    public function getBroadcastEvent(): ?string
+    {
+        return $this->broadcastEvent;
+    }
+
+    /**
+     * Tell the other tabs (when the board broadcasts): the origin is the token of the tab
+     * that made the change, which ignores it. Sent once the transaction that made the
+     * change commits (at once when none is open); a broadcaster that is down is reported
+     * and never makes the saved change look failed.
+     */
+    public function broadcastChange(?string $id = null, ?string $from = null, ?string $to = null, ?string $origin = null): void
+    {
+        if (! $this->isBroadcasting()) {
+            return;
+        }
+
+        // The channel is the app's closure: resolved inside rescue() too, so no caller needs its own.
+        rescue(function () use ($id, $from, $to, $origin) {
+            $event = $this->broadcastNow ? BoardChangedNow::class : BoardChanged::class;
+            $channel = $this->getBroadcastChannel();
+
+            DB::afterCommit(fn () => rescue(
+                fn () => $event::dispatch($channel, $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin),
+                report: true,
+            ));
+        }, report: true);
+    }
+
     /** @return class-string<Model> */
     public function getModel(): string
     {
@@ -586,7 +704,7 @@ class Board
         }
 
         $summary = app()->call($this->summarize, [
-            'query' => $this->filteredQuery($search, $filters)->where($this->qualifiedColumnAttribute(), $columnName),
+            'query' => $this->getColumnQuery($columnName, $search, $filters),
             'column' => $column,
         ]);
 
@@ -737,8 +855,7 @@ class Board
             return [];
         }
 
-        $query = $this->filteredQuery($search, $filters)
-            ->where($this->qualifiedColumnAttribute(), $columnName);
+        $query = $this->getColumnQuery($columnName, $search, $filters);
 
         if ($lane !== null && $this->hasLanes()) {
             $this->laneQuery($query, $lane);
@@ -932,6 +1049,17 @@ class Board
         $query = $this->baseQuery();
 
         return $query->where($this->qualifiedColumnAttribute($query), $columnName);
+    }
+
+    /**
+     * One column's cards as the user sees them: the search and filters applied. What a
+     * summary and a column action work on.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function getColumnQuery(string $columnName, string $search = '', array $filters = []): Builder
+    {
+        return $this->filteredQuery($search, $filters)->where($this->qualifiedColumnAttribute(), $columnName);
     }
 
     /** @param  array<string, mixed>  $filters */

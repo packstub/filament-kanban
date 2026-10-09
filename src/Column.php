@@ -4,6 +4,7 @@ namespace Packstub\Kanban;
 
 use BackedEnum;
 use Closure;
+use Filament\Actions\Action;
 use Filament\Support\Contracts\HasColor;
 use Filament\Support\Contracts\HasLabel;
 use Illuminate\Contracts\Support\Htmlable;
@@ -44,6 +45,9 @@ class Column
 
     /** @var list<string>|Closure|null */
     protected array|Closure|null $accepts = null;
+
+    /** @var list<Action> */
+    protected array $actions = [];
 
     protected ?string $sortColumn = null;
 
@@ -200,6 +204,25 @@ class Column
         $this->sortDirection = strtolower($direction) === 'desc' ? 'desc' : 'asc';
 
         return $this;
+    }
+
+    /**
+     * Filament actions in the column's header menu (archive everything here, export the
+     * column…). A ColumnAction gets the column's cards as `$query` and the column as `$column`.
+     *
+     * @param  list<Action>  $actions
+     */
+    public function actions(array $actions): static
+    {
+        $this->actions = array_values($actions);
+
+        return $this;
+    }
+
+    /** @return list<Action> */
+    public function getActions(): array
+    {
+        return $this->actions;
     }
 
     public function getName(): string

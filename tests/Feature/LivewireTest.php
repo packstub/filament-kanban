@@ -2,9 +2,12 @@
 
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
 use Packstub\Kanban\Board;
+use Packstub\Kanban\Events\BoardChanged;
+use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
@@ -140,6 +143,60 @@ it('keeps an exception thrown while saving out of the notification: reported, an
         ->and($other->fresh()->status)->toBe('todo');
 });
 
+it('tells the other tabs about a move only when the board broadcasts, with the tab\'s own token', function () {
+    Event::fake([BoardChanged::class]);
+    $task = task('Build');
+
+    Livewire::test(TaskBoard::class)
+        ->call('kanbanMove', (string) $task->id, 'doing', null, '', [], null, 'tab1')
+        ->assertReturned(fn ($result) => $result['ok'] === true);
+
+    Event::assertNotDispatched(BoardChanged::class);
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->key('tasks')->broadcast(fn () => 'team.1.kanban');
+        }
+    };
+
+    $test = Livewire::test($component::class);
+
+    expect($test->instance()->getKanbanConfig()['broadcast'])->toBe(['channel' => 'team.1.kanban', 'event' => '.kanban.changed', 'board' => 'tasks']);
+
+    $test->call('kanbanMove', (string) $task->id, 'done', null, '', [], null, 'tab1');
+
+    Event::assertDispatched(BoardChanged::class, fn (BoardChanged $e) => $e->channel === 'team.1.kanban'
+        && $e->broadcastWith() === ['board' => 'tasks', 'id' => (string) $task->id, 'from' => 'doing', 'to' => 'done', 'origin' => 'tab1']);
+
+    $test->call('kanbanMove', (string) $task->id, 'doing') // refused: doing accepts cards from todo only
+        ->assertReturned(fn ($result) => $result['ok'] === false)
+        ->call('kanbanMove', (string) $task->id, 'done') // dropped back where it was, nothing reordered: nothing to tell
+        ->assertReturned(fn ($result) => $result['ok'] === true);
+
+    Event::assertDispatchedTimes(BoardChanged::class, 1);
+});
+
+it('undoes a move as a move back, through the rules and the events again', function () {
+    Event::fake([CardMoved::class]);
+    $task = task('Build');
+
+    $test = Livewire::test(TaskBoard::class);
+
+    expect($test->instance()->getKanbanConfig()['undo'])->toBe(5);
+
+    $test->call('kanbanMove', (string) $task->id, 'doing')
+        ->assertReturned(fn ($result) => $result['ok'] === true)
+        ->call('kanbanMove', (string) $task->id, 'todo')
+        ->assertReturned(fn ($result) => $result['ok'] === true);
+
+    expect($task->fresh()->status)->toBe('todo');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->from === 'todo' && $e->to === 'doing');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->from === 'doing' && $e->to === 'todo');
+    Event::assertDispatchedTimes(CardMoved::class, 2);
+});
+
 it('never moves into a column this user cannot see', function () {
     $task = task('Build');
     TaskBoard::$visible = ['todo'];
@@ -170,4 +227,37 @@ it('refreshes as many cards as the browser already shows', function () {
     Livewire::test(TaskBoard::class)
         ->call('kanbanRefresh', '', [], ['todo' => 3])
         ->assertReturned(fn ($result) => count($result['columns'][0]['cards']) === 3);
+});
+
+it('tells the other tabs once about a bulk move, with the tab\'s token', function () {
+    Event::fake([BoardChanged::class]);
+    $a = task('A');
+    $b = task('B');
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->broadcast();
+        }
+    };
+
+    Livewire::test($component::class)
+        ->call('kanbanMoveMany', [(string) $a->id, (string) $b->id], 'doing', '', [], null, 'tab1')
+        ->assertReturned(fn ($result) => count($result['moved']) === 2);
+
+    Event::assertDispatchedTimes(BoardChanged::class, 1);
+    Event::assertDispatched(BoardChanged::class, fn (BoardChanged $e) => $e->origin === 'tab1');
+});
+
+it('gives a board drawn again its column actions with the columns, and only then', function () {
+    $test = Livewire::test(TaskBoard::class);
+
+    $plain = $test->instance()->kanbanRefresh();
+    $whole = $test->instance()->kanbanRefresh(whole: true);
+
+    expect($plain['columns'][0])->not->toHaveKey('actions')
+        ->and(array_column(collect($whole['columns'])->firstWhere('name', 'done')['actions'], 'name'))->toBe(['column:done:archive']);
+
+    $test->call('$refresh')->assertSeeHtml('\u0022columns\u0022:null'); // a re-render evaluates no column action
 });
