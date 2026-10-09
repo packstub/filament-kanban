@@ -235,7 +235,7 @@ it('shifts the cards beyond the loaded page in one statement when they collide, 
 
     expect(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['New' => 1, 'T1' => 2, 'T2' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7])
         ->and($updates)->toHaveCount(4) // the status, T1 and T2 (New already is 1), then one shift of the tail
-        ->and($updates->last())->toContain('"sort" = "sort" + 1');
+        ->and($updates->last())->toContain('"sort" = "tasks"."sort" + 1');
 
     // Reordered within the loaded page: the tail already sits above it, nothing below is touched.
     DB::flushQueryLog();

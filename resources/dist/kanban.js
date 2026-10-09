@@ -318,6 +318,7 @@ export default function packstubKanban(config) {
 
                 if (! this.columns.length) {
                     this.columns = result.columns
+                    this.restore() // collapsed() columns and the saved folded/hidden ones, now that there are columns
                     return
                 }
 

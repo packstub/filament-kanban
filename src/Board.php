@@ -664,7 +664,7 @@ class Board
             (clone $update)
                 ->whereNotIn($keyName, array_keys($sent))
                 ->whereNotNull($query->qualifyColumn($this->orderAttribute))
-                ->update([$this->orderAttribute => DB::raw($query->getGrammar()->wrap($this->orderAttribute)." + {$shift}")]);
+                ->update([$this->orderAttribute => DB::raw($query->getGrammar()->wrap($query->qualifyColumn($this->orderAttribute))." + {$shift}")]);
         }
 
         $next = max(count($sent), $taken === [] ? 0 : max($taken) + $shift);
