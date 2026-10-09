@@ -4,11 +4,13 @@ namespace Packstub\Kanban\Pages;
 
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
+use Packstub\Kanban\Concerns\HasNavigationBadgeFromBoard;
 use Packstub\Kanban\Concerns\InteractsWithKanban;
 
 /** A standalone panel page holding one board. Implement kanban(Board $board). */
 abstract class KanbanPage extends Page
 {
+    use HasNavigationBadgeFromBoard;
     use InteractsWithKanban;
 
     protected string $view = 'packstub-kanban::pages.kanban';

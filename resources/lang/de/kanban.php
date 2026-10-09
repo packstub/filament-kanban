@@ -41,4 +41,6 @@ return [
     'bulk_refused_one' => 'Eine Karte konnte nicht verschoben werden.',
     'bulk_limit' => 'Wähle höchstens :max Karten auf einmal.',
     'other' => 'Andere',
+    'board' => 'Board',
+    'table' => 'Tabelle',
 ];

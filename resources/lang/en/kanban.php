@@ -41,4 +41,6 @@ return [
     'bulk_refused_one' => 'One card could not be moved.',
     'bulk_limit' => 'Select at most :max cards at a time.',
     'other' => 'Other',
+    'board' => 'Board',
+    'table' => 'Table',
 ];

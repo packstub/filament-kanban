@@ -32,7 +32,24 @@ trait InteractsWithKanban
 
     public function getKanban(): Board
     {
-        return $this->kanbanBoard ??= $this->kanban(Board::make()->key(static::class));
+        return $this->kanbanBoard ??= $this->kanbanDefaults($this->kanban(Board::make()->key(static::class)));
+    }
+
+    /** What a page fills in after kanban() (a resource page: the resource's query). */
+    protected function kanbanDefaults(Board $board): Board
+    {
+        return $board;
+    }
+
+    /**
+     * How many cards the user may see on this board, over its visible columns, in one
+     * grouped query: for a navigation badge. Builds the component without mount(), so
+     * a kanban() that reads state set in mount() or a public property counts without it.
+     */
+    public static function getBoardCount(): int
+    {
+        // Once per request: the navigation may ask more than once.
+        return once(fn () => app(static::class)->getKanban()->getTotalCount());
     }
 
     /**

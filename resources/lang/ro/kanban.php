@@ -41,4 +41,6 @@ return [
     'bulk_refused_one' => 'Un card nu a putut fi mutat.',
     'bulk_limit' => 'Selectează cel mult :max carduri odată.',
     'other' => 'Altele',
+    'board' => 'Panou',
+    'table' => 'Tabel',
 ];
