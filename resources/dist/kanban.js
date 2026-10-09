@@ -41,6 +41,7 @@ export default function packstubKanban(config) {
         refreshTimer: null,
         refreshSeq: 0,
         pending: 0,
+        stale: false,
 
         init() {
             this.restore()
@@ -107,9 +108,18 @@ export default function packstubKanban(config) {
                 if (payload?.origin && payload.origin === ORIGIN) return
                 clearTimeout(this.echoTimer)
                 this.echoTimer = setTimeout(() => {
-                    if (! this.dragging && ! this.pending) this.refresh(true)
+                    this.stale = true
+                    this.settle()
                 }, 300)
             })
+        },
+
+        // A change that arrived while a card was in the air is loaded once the drop has settled.
+        settle() {
+            if (this.stale && ! this.dragging && ! this.pending) {
+                this.stale = false
+                this.refresh(true)
+            }
         },
 
         /* ------------------------------------------------------------ drag and drop */
@@ -165,7 +175,7 @@ export default function packstubKanban(config) {
             this.dragging = null
 
             if (from === to && event.oldDraggableIndex === event.newDraggableIndex) {
-                return
+                return this.settle()
             }
 
             // Put the node back where Sortable took it from and let Alpine move it from
@@ -189,8 +199,9 @@ export default function packstubKanban(config) {
             this.move(detail.id, detail.to, detail.from, config.reorderable ? detail.index : 0, { undo: true })
         },
 
+        // Only when the way back is open (a one-way accepts(), a column that is not draggable): the server decides anyway.
         offerUndo(id, from, to, index) {
-            if (! config.undo || ! window.FilamentNotification || ! window.FilamentNotificationAction) return
+            if (! config.undo || ! window.FilamentNotification || ! window.FilamentNotificationAction || ! this.canDrop(to, from)) return
 
             new window.FilamentNotification()
                 .title(this.t.moved_to.replace(':column', this.findColumn(to)?.label ?? to))
@@ -266,7 +277,10 @@ export default function packstubKanban(config) {
                     }
                 })
                 .catch(() => undo(this.t.offline))
-                .finally(() => this.pending--)
+                .finally(() => {
+                    this.pending--
+                    this.settle()
+                })
         },
 
         canDrop(from, to) {

@@ -51,7 +51,10 @@ trait KanbanActions
 
         // Column actions are cached as `column:<column>:<name>`, so two columns may share a
         // name; hidden columns' actions are registered too and hidden, like a card off the board.
+        // Each column gets its own copy, so one action object may be given to several columns.
         foreach ($board->getAllColumns() as $column) {
+            $column->actions(array_map(fn (Action $action) => clone $action, $column->getActions()));
+
             foreach ($column->getActions() as $action) {
                 if ($action instanceof ColumnAction) {
                     $action->board($board)->column($column);
@@ -83,10 +86,10 @@ trait KanbanActions
             $this->dispatch('packstub-kanban-refresh');
 
             $arguments = $action->getArguments();
-            $this->getKanban()->broadcastChange(
-                id: isset($arguments['kanbanRecord']) ? (string) $arguments['kanbanRecord'] : null,
-                origin: isset($arguments['kanbanOrigin']) ? (string) $arguments['kanbanOrigin'] : null,
-            );
+            rescue(fn () => $this->getKanban()->broadcastChange(
+                id: is_scalar($arguments['kanbanRecord'] ?? null) ? (string) $arguments['kanbanRecord'] : null,
+                origin: is_string($arguments['kanbanOrigin'] ?? null) ? $arguments['kanbanOrigin'] : null,
+            ), report: true);
 
             return $result;
         });

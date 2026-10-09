@@ -2,18 +2,27 @@
 
 use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
+use Illuminate\Broadcasting\BroadcastException;
+use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\Broadcaster;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
+use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
 use Packstub\Kanban\Events\BoardChanged;
+use Packstub\Kanban\Events\BoardChangedNow;
 use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Filter;
 use Packstub\Kanban\Tests\Fixtures\Status;
 use Packstub\Kanban\Tests\Fixtures\Task;
+use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
 function board(): Board
 {
@@ -271,16 +280,64 @@ it('broadcasts on a private channel named after the key unless told otherwise, w
 
     $board = board()->key('App\\Filament\\Pages\\Deals')->broadcast();
 
-    expect($board->getBroadcastChannel())->toBe('kanban.App.Filament.Pages.Deals')
+    expect($board->getBroadcastChannel())->toBe('kanban.app-filament-pages-deals') // no dots: a {board} route parameter stops at one
         ->and($board->getBroadcastEvent())->toBe('.kanban.changed')
-        ->and(board()->broadcast(fn () => 'tenant.7.kanban', '.deals')->getBroadcastChannel())->toBe('tenant.7.kanban');
+        ->and($board->isBroadcastingNow())->toBeFalse()
+        ->and(board()->broadcast(fn () => 'tenant.7.kanban', 'deals.changed')->getBroadcastChannel())->toBe('tenant.7.kanban')
+        ->and(board()->broadcast(null, 'deals.changed')->getBroadcastEvent())->toBe('.deals.changed')
+        ->and(board()->broadcastNow()->isBroadcastingNow())->toBeTrue();
 
     $event = new BoardChanged('tenant.7.kanban', '.kanban.changed', 'deals', '3', 'todo', 'doing', 'tab1');
 
     expect($event->broadcastOn())->toBeInstanceOf(PrivateChannel::class)
         ->and($event->broadcastOn()->name)->toBe('private-tenant.7.kanban')
         ->and($event->broadcastAs())->toBe('kanban.changed')
-        ->and($event->broadcastWith())->toBe(['board' => 'deals', 'id' => '3', 'from' => 'todo', 'to' => 'doing', 'origin' => 'tab1']);
+        ->and($event->broadcastWith())->toBe(['board' => 'deals', 'id' => '3', 'from' => 'todo', 'to' => 'doing', 'origin' => 'tab1'])
+        ->and($event)->toBeInstanceOf(ShouldDispatchAfterCommit::class)
+        ->and(new BoardChangedNow('c', 'e'))->toBeInstanceOf(ShouldBroadcastNow::class);
+});
+
+it('keeps a move saved when the broadcaster is down: the failure is reported, the move answers ok', function () {
+    Exceptions::fake();
+    config()->set('queue.default', 'sync');
+    config()->set('broadcasting.default', 'down');
+    config()->set('broadcasting.connections.down', ['driver' => 'down']);
+    app(BroadcastManager::class)->extend('down', fn () => new class implements Broadcaster
+    {
+        public function auth($request): void {}
+
+        public function validAuthenticationResponse($request, $result): void {}
+
+        public function broadcast(array $channels, $event, array $payload = []): void
+        {
+            throw new BroadcastException('Connection refused');
+        }
+    });
+    $task = task('Build');
+
+    $board = board()->broadcastNow('team.1.kanban');
+    $board->broadcastChange((string) $task->id, 'todo', 'doing', 'tab1');
+
+    Exceptions::assertReported(BroadcastException::class);
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->broadcastNow('team.1.kanban');
+        }
+    };
+
+    Livewire::test($component::class)
+        ->call('kanbanMove', (string) $task->id, 'doing', null, '', [], 'tab1')
+        ->assertReturned(fn ($result) => $result['ok'] === true)
+        ->callAction('bump', arguments: ['kanbanRecord' => (string) $task->id, 'kanbanOrigin' => 'tab1'])
+        ->assertHasNoErrors()
+        ->assertDispatched('packstub-kanban-refresh');
+
+    expect($task->fresh()->status)->toBe('doing')
+        ->and($task->fresh()->priority)->toBe(1);
+    Exceptions::assertReportedCount(3);
 });
 
 it('offers an undo for five seconds unless told otherwise', function () {

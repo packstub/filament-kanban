@@ -9,8 +9,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Conditionable;
 use Packstub\Kanban\Events\BoardChanged;
+use Packstub\Kanban\Events\BoardChangedNow;
 use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 
@@ -67,6 +69,8 @@ class Board
     protected string|Closure|null $broadcastChannel = null;
 
     protected ?string $broadcastEvent = null;
+
+    protected bool $broadcastNow = false;
 
     /** @var list<Column>|null */
     protected ?array $allColumns = null;
@@ -264,17 +268,25 @@ class Board
     }
 
     /**
-     * Broadcast a BoardChanged event (queued, on a private channel) after every change,
-     * so the other tabs listening with Laravel Echo reload at once instead of polling.
-     * The channel is yours to authorise in routes/channels.php; by default it is
-     * `kanban.<key>`. The event name keeps Echo's leading dot (the name as broadcast).
+     * Broadcast a BoardChanged event on a private channel after every change, so the
+     * other tabs listening with Laravel Echo reload at once instead of polling. Queued
+     * (after the transaction commits; a worker must run) unless $now. The channel is
+     * yours to authorise in routes/channels.php; by default it is `kanban.<key slug>`.
+     * The event name is normalised to Echo's form, with a leading dot.
      */
-    public function broadcast(string|Closure|null $channel = null, string $event = '.kanban.changed'): static
+    public function broadcast(string|Closure|null $channel = null, string $event = '.kanban.changed', bool $now = false): static
     {
         $this->broadcastChannel = $channel;
-        $this->broadcastEvent = $event;
+        $this->broadcastEvent = '.'.ltrim($event, '.');
+        $this->broadcastNow = $now;
 
         return $this;
+    }
+
+    /** broadcast() without the queue: sent during the request, and a broadcaster down costs the request its time. */
+    public function broadcastNow(string|Closure|null $channel = null, string $event = '.kanban.changed'): static
+    {
+        return $this->broadcast($channel, $event, now: true);
     }
 
     /** Where the browser remembers folded and hidden columns; defaults to the page's class. */
@@ -390,8 +402,14 @@ class Board
 
         $channel = $this->broadcastChannel instanceof Closure ? app()->call($this->broadcastChannel) : $this->broadcastChannel;
 
-        // A class name is the default key; a channel name cannot carry backslashes.
-        return (string) ($channel ?? 'kanban.'.str_replace('\\', '.', $this->key ?? 'board'));
+        // A class name is the default key; a channel name must not carry backslashes or
+        // dots (a `{board}` route parameter in routes/channels.php stops at a dot).
+        return (string) ($channel ?? 'kanban.'.Str::slug(str_replace('\\', '-', $this->key ?? 'board')));
+    }
+
+    public function isBroadcastingNow(): bool
+    {
+        return $this->broadcastNow;
     }
 
     public function getBroadcastEvent(): ?string
@@ -399,12 +417,20 @@ class Board
         return $this->broadcastEvent;
     }
 
-    /** Tell the other tabs (when the board broadcasts): the origin is the token of the tab that made the change, which ignores it. */
+    /**
+     * Tell the other tabs (when the board broadcasts): the origin is the token of the tab
+     * that made the change, which ignores it. The change is saved by now, so a broadcaster
+     * that is down (reported) must not make it look failed.
+     */
     public function broadcastChange(?string $id = null, ?string $from = null, ?string $to = null, ?string $origin = null): void
     {
-        if ($this->isBroadcasting()) {
-            BoardChanged::dispatch($this->getBroadcastChannel(), $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin);
+        if (! $this->isBroadcasting()) {
+            return;
         }
+
+        $event = $this->broadcastNow ? BoardChangedNow::class : BoardChanged::class;
+
+        rescue(fn () => $event::dispatch($this->getBroadcastChannel(), $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin), report: true);
     }
 
     /** @return class-string<Model> */

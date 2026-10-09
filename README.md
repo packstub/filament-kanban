@@ -18,11 +18,11 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 
 - **[Instant drag and drop](#instant-moves)**: a drop lands at once; if the server refuses, the card slides back with the reason.
 - **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
-- **[Filament actions on cards](#card-actions)**: edit in a slide-over, delete or run your own actions, and [create in a column](#create-in-a-column).
+- **[Filament actions on cards](#card-actions) and [columns](https://packstub.dev/docs/filament-kanban/actions#column-actions)**: edit in a slide-over, delete or run your own actions, [create in a column](#create-in-a-column), act on a whole column.
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
 - **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
-- **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` event, browser events and polling for shared boards.
+- **[Shared boards](https://packstub.dev/docs/filament-kanban/configuration#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, browser events, and an Undo on every move.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 
 ## Compatibility

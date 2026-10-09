@@ -48,11 +48,12 @@ class ColumnAction extends Action
     public function getColumnQuery(): Builder
     {
         $arguments = $this->getArguments();
+        $search = $arguments['kanbanSearch'] ?? '';
         $filters = $arguments['kanbanFilters'] ?? [];
 
         return $this->board->getColumnQuery(
             $this->column->getName(),
-            (string) ($arguments['kanbanSearch'] ?? ''),
+            is_string($search) ? $search : '',
             is_array($filters) ? $filters : [],
         );
     }

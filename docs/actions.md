@@ -74,6 +74,7 @@ The "+" is left out of columns that are hidden, not droppable, marked `creatable
 `Column::actions()` puts a `⋯` menu in the column's header: "Archive everything in Done", "Export this column", "Assign all to me". Use `ColumnAction::make()` (a Filament `Action` with three more injections): `$query` is the column's cards as the user sees them (the board's `query()`, the column, and the search and filters the user has on), `$column` is the `Column`, `$board` the `Board`.
 
 ```php
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
 use Packstub\Kanban\Actions\ColumnAction;
 use Packstub\Kanban\Column;
@@ -89,7 +90,7 @@ Column::make('lost')->actions([
 ]),
 ```
 
-Give each column its own action instances (build them in a closure or a loop rather than sharing one array): the action is bound to its column when the board registers it, under the name `column:<column>:<action>`, so two columns may both have an `archive`. Modals, forms, confirmations, `authorize()`, `hidden()` and `disabled()` work as on any action, with the column injected. The server resolves the column from the request again and never trusts the browser past the column's name and its current search and filters (validated as on a refresh): an action of a hidden column is hidden and refused. The board reloads once the action has run.
+Each column gets its own copy of the action, bound to the column when the board registers it, under the name `column:<column>:<action>`: two columns may both have an `archive`, and one action object may be given to several columns. Modals, forms, confirmations, `authorize()`, `hidden()`, `visible()` and `disabled()` work as on any action, with the column injected; an action the app hides is left out of the menu. The server resolves the column from the request again and never trusts the browser past the column's name and its current search and filters (validated as on a refresh): an action of a hidden column is hidden and refused. The board reloads once the action has run.
 
 ## Header actions
 

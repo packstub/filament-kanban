@@ -1,8 +1,11 @@
 <?php
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
+use Packstub\Kanban\Actions\ColumnAction;
 use Packstub\Kanban\Board;
+use Packstub\Kanban\Column;
 use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Tests\Fixtures\PlainBoard;
 use Packstub\Kanban\Tests\Fixtures\Task;
@@ -36,6 +39,52 @@ it('offers each column its actions, named after the column, with the column inje
 
     expect($config['columns'][0]['actions'][0])->toMatchArray(['name' => 'column:todo:archive', 'label' => 'Archive Todo'])
         ->and($config['columns'][2]['actions'][0])->toMatchArray(['name' => 'column:done:archive', 'label' => 'Archive Done']);
+});
+
+it('gives each column its own copy of a shared action object, and leaves out the ones the app hides', function () {
+    $shared = ColumnAction::make('clear')->visible(fn (Column $column) => $column->getName() !== 'doing')->action(fn (Builder $query) => $query->delete());
+    $component = new class extends TaskBoard
+    {
+        public static ?ColumnAction $shared = null;
+
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->columns([
+                Column::make('todo')->actions([self::$shared]),
+                Column::make('doing')->actions([self::$shared, ColumnAction::make('secret')->authorize(false)]),
+            ]);
+        }
+    };
+    $component::$shared = $shared;
+    $todo = task('A', 'todo');
+    $doing = task('B', 'doing');
+
+    $test = Livewire::test($component::class);
+    $config = $test->instance()->getKanbanConfig();
+
+    expect(array_column($config['columns'][0]['actions'], 'name'))->toBe(['column:todo:clear'])
+        ->and($config['columns'][1]['actions'])->toBe([])
+        ->and($shared->getName())->toBe('clear'); // the app's object is left alone
+
+    $test->callAction('column:todo:clear', arguments: ['kanbanColumn' => 'todo'])
+        ->assertActionHidden('column:doing:clear', ['kanbanColumn' => 'doing']);
+
+    expect(Task::find($todo->id))->toBeNull()
+        ->and($doing->fresh())->not->toBeNull();
+});
+
+it('shrugs off arguments of the wrong type', function () {
+    $task = task('Alpha', 'done');
+    $other = task('Beta');
+
+    Livewire::test(TaskBoard::class)
+        ->callAction('column:done:archive', arguments: ['kanbanColumn' => 'done', 'kanbanSearch' => ['x'], 'kanbanFilters' => 'nope', 'kanbanOrigin' => ['t']])
+        ->assertHasNoErrors()
+        ->callAction('bump', arguments: ['kanbanRecord' => (string) $other->id, 'kanbanOrigin' => ['t']])
+        ->assertHasNoErrors();
+
+    expect($task->fresh()->status)->toBe('archived')
+        ->and($other->fresh()->priority)->toBe(1);
 });
 
 it('runs a column action on the column\'s cards, as the search and filters leave them', function () {

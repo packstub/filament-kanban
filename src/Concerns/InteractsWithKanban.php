@@ -76,7 +76,7 @@ trait InteractsWithKanban
         }
 
         $this->kanbanMoved($id, $to, $card);
-        $board->broadcastChange($id, (string) $from, $to, $origin);
+        rescue(fn () => $board->broadcastChange($id, (string) $from, $to, $origin), report: true);
 
         return [
             'ok' => true,
@@ -107,6 +107,31 @@ trait InteractsWithKanban
         ];
     }
 
+    /**
+     * A column's actions as the menu shows them: the ones the app hides (hidden(),
+     * visible(), authorize()) are left out, evaluated with the column as argument.
+     *
+     * @return list<array{name: string, label: mixed, icon: string|null, color: string|null}>
+     */
+    protected function kanbanColumnActionSummaries(string $columnName): array
+    {
+        $summaries = [];
+
+        foreach ($this->getKanban()->getColumn($columnName)?->getActions() ?? [] as $action) {
+            $action->arguments(['kanbanColumn' => $columnName]);
+
+            try {
+                if (! $action->isHidden()) {
+                    $summaries[] = $this->kanbanActionSummary($action);
+                }
+            } finally {
+                $action->resetArguments();
+            }
+        }
+
+        return $summaries;
+    }
+
     /** @return array<string, mixed> */
     public function getKanbanConfig(): array
     {
@@ -119,7 +144,7 @@ trait InteractsWithKanban
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
             'columns' => array_map(fn (array $column) => [
                 ...$column,
-                'actions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getColumn($column['name'])->getActions() : []),
+                'actions' => $actions ? $this->kanbanColumnActionSummaries($column['name']) : [],
             ], $board->getState()),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),

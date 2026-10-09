@@ -5,15 +5,16 @@ namespace Packstub\Kanban\Events;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * Broadcast (queued) after a board changed: a move, a card action, a create. The
- * other tabs listening on the board's channel reload; the tab that made the change
- * recognises its own origin token and ignores it. Only sent when the board
- * broadcast()s; CardMoved stays the event apps listen to on the server.
+ * Broadcast (queued, once the transaction commits) after a board changed: a move, a
+ * card action, a create. The other tabs listening on the board's channel reload; the
+ * tab that made the change recognises its own origin token and ignores it. Only sent
+ * when the board broadcast()s; CardMoved stays the event apps listen to on the server.
  */
-class BoardChanged implements ShouldBroadcast
+class BoardChanged implements ShouldBroadcast, ShouldDispatchAfterCommit
 {
     use Dispatchable;
     use InteractsWithSockets;
