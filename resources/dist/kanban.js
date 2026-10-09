@@ -20,6 +20,9 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
+// A filter's "nothing chosen", by type.
+const blankFor = (filter) => filter.type === 'multiple' ? [] : filter.type === 'toggle' ? false : ''
+
 export default function packstubKanban(config) {
     return {
         columns: config.columns,
@@ -28,7 +31,8 @@ export default function packstubKanban(config) {
         createAction: config.createAction,
         t: config.i18n,
         search: '',
-        active: Object.fromEntries(config.filters.map((f) => [f.name, ''])),
+        // '' for a select, [] for a multiple, false for a toggle
+        active: Object.fromEntries(config.filters.map((f) => [f.name, blankFor(f)])),
         hidden: [],
         folded: {},
         loading: {},
@@ -41,6 +45,11 @@ export default function packstubKanban(config) {
 
         init() {
             this.restore()
+
+            // A bookmarked or shared board: the page came unfiltered, so load it as the URL says.
+            if (config.url && this.readUrl()) {
+                this.refresh()
+            }
 
             if (config.focus) {
                 document.body.classList.toggle('pk-focus-sidebar', this.sidebar)
@@ -305,6 +314,10 @@ export default function packstubKanban(config) {
             const seq = ++this.refreshSeq
             const loaded = background ? Object.fromEntries(this.columns.map((c) => [c.name, c.cards.length])) : {}
 
+            if (! background) {
+                this.writeUrl()
+            }
+
             this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
                 if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
                     return
@@ -320,6 +333,98 @@ export default function packstubKanban(config) {
                     }
                 }
             })
+        },
+
+        isActive(filter) {
+            const value = this.active[filter.name]
+
+            return filter.type === 'multiple' ? value.length > 0 : filter.type === 'toggle' ? value === true : value !== ''
+        },
+
+        toggleOption(filter, value) {
+            const current = this.active[filter.name]
+            this.active[filter.name] = current.includes(value) ? current.filter((v) => v !== value) : [...current, value]
+            this.refresh()
+        },
+
+        toggleFilter(filter) {
+            this.active[filter.name] = ! this.active[filter.name]
+            this.refresh()
+        },
+
+        clearFilter(filter) {
+            this.active[filter.name] = blankFor(filter)
+            this.refresh()
+        },
+
+        /* ------------------------------------------------------------ the URL */
+
+        // `?search=…&filters[owner_id][]=1&filters[mine]=1`: only the filters the board
+        // defines are read, and the server checks every value against the options again.
+        readUrl() {
+            let found = false
+
+            try {
+                const params = new URLSearchParams(window.location.search)
+                const search = params.get('search')
+
+                if (search && config.searchable) {
+                    this.search = search
+                    found = true
+                }
+
+                for (const filter of this.filters) {
+                    const values = [...params.getAll(`filters[${filter.name}][]`), ...params.getAll(`filters[${filter.name}]`)].filter((v) => v !== '')
+
+                    if (! values.length) continue
+
+                    if (filter.type === 'multiple') {
+                        this.active[filter.name] = [...new Set(values)]
+                    } else if (filter.type === 'toggle') {
+                        this.active[filter.name] = ['1', 'true', 'on'].includes(values[0].toLowerCase())
+                    } else {
+                        this.active[filter.name] = values[0]
+                    }
+
+                    found = true
+                }
+            } catch (e) {}
+
+            return found
+        },
+
+        // Mirrors the state into the query string in place (no history entry); an empty
+        // search or filter is removed, so an untouched board keeps a clean URL.
+        writeUrl() {
+            if (! config.url) return
+
+            try {
+                const url = new URL(window.location.href)
+                const params = url.searchParams
+
+                for (const key of [...params.keys()]) {
+                    if (key === 'search' || key.startsWith('filters[')) params.delete(key)
+                }
+
+                const search = this.search.trim()
+                if (search) params.set('search', search)
+
+                for (const filter of this.filters) {
+                    const value = this.active[filter.name]
+
+                    if (filter.type === 'multiple') {
+                        for (const v of value) params.append(`filters[${filter.name}][]`, v)
+                    } else if (filter.type === 'toggle') {
+                        if (value === true) params.set(`filters[${filter.name}]`, '1')
+                    } else if (value !== '') {
+                        params.set(`filters[${filter.name}]`, value)
+                    }
+                }
+
+                if (url.href !== window.location.href) {
+                    window.history.replaceState(window.history.state, '', url)
+                }
+            } catch (e) {}
         },
 
         // "Load more" loads itself when it scrolls into view; the button stays for keyboards.

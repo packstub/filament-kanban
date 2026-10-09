@@ -103,8 +103,9 @@ trait InteractsWithKanban
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
-            'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
+            'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'type' => $f->getType(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
             'focus' => $board->hasFocusMode(),
+            'url' => $board->persistsInUrl(),
             'poll' => $board->getPoll(),
             'cardActions' => array_map(fn ($action) => [
                 'name' => $action->getName(),

@@ -21,7 +21,7 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 - **[Filament actions on cards](#card-actions)**: edit in a slide-over, delete or run your own actions, and [create in a column](#create-in-a-column).
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
+- **[Search, filters and paging](#search-filters-and-paging)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
 - **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` event, browser events and polling for shared boards.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 
@@ -180,12 +180,13 @@ Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 ```php
 ->searchable(['reference', 'company', 'owner.name'])
 ->filters([
-    Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
+    Filter::make('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
+    Filter::make('mine')->label('Assigned to me')->toggle()->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
 ])
 ->perColumn(50)
 ```
 
-Typing filters the loaded cards at once, then the server brings the matching cards of every column. Each column loads its cards in pages as you scroll.
+Typing filters the loaded cards at once, then the server brings the matching cards of every column. A `Filter` is a select, a popover of checkboxes with `multiple()`, or an on/off chip with `toggle()`. The search and the active filters stay in the URL, so a filtered board can be bookmarked and shared. Each column loads its cards in pages as you scroll.
 
 Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration#search).
 

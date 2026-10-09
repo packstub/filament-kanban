@@ -3,6 +3,7 @@
 return [
     'search' => 'Suchen',
     'all' => 'Alle',
+    'clear' => 'Zurücksetzen',
     'columns' => 'Spalten',
     'show_sidebar' => 'Menü einblenden',
     'hide_sidebar' => 'Menü ausblenden',

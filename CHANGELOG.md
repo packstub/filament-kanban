@@ -4,6 +4,10 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
+- Search and filters in the URL: the search and the active filters are mirrored into the page's query string (`?search=…&filters[owner_id][]=3&filters[mine]=1`) in place, and read back on load, so a filtered board can be bookmarked, shared and reloaded. An untouched board keeps a clean URL; values from the URL go through the same checks as any other. `persistInUrl(false)` turns it off.
+- Multi-select filters: `Filter::multiple()` shows a popover of checkboxes with the count on the button; the default narrows with `whereIn`, a `query()` closure gets the chosen values as a list. Values outside the options are dropped one by one.
+- Toggle filters: `Filter::toggle()` is an on/off chip with the filter's label and no options; `query()` is required and gets `true` when the chip is on.
+- Each filter's `type` (`select`, `multiple`, `toggle`) is in the board's config; new string `clear` in every language.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.
 - Fixed: a horizontal swipe over a column scrolls the board; the card list no longer captures the gesture (it scrolls vertically only, without overscroll containment), so a short column also lets the page scroll past it.

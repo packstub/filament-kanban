@@ -3,6 +3,7 @@
 return [
     'search' => 'Caută',
     'all' => 'Toate',
+    'clear' => 'Șterge',
     'columns' => 'Coloane',
     'show_sidebar' => 'Arată meniul',
     'hide_sidebar' => 'Ascunde meniul',

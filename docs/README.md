@@ -15,7 +15,7 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 - **[Filament actions on cards](actions.md)**: edit in a slide-over, delete or run your own actions, and create in a column.
 - **[Column summaries](columns.md#summaries)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](cards.md)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](configuration.md#search)**: instant search, select filters and infinite scroll per column.
+- **[Search, filters and paging](configuration.md#search)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
 
 ## Guides
 

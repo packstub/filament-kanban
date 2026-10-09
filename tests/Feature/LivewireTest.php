@@ -99,6 +99,44 @@ it('refreshes with a search and loads more cards', function () {
         ->assertReturned(fn ($cards) => count($cards) === 1 && $cards[0]['title'] === 'Beta');
 });
 
+it('refreshes with a multiple filter and a toggle, ignoring values that are not offered', function () {
+    $acme = project('Acme');
+    $globex = project('Globex');
+    task('Alpha', 'todo', ['project_id' => $acme->id, 'priority' => 9]);
+    task('Beta', 'todo', ['project_id' => $globex->id]);
+    task('Gamma');
+
+    Livewire::test(TaskBoard::class)
+        ->call('kanbanRefresh', '', ['project_id' => [(string) $acme->id, (string) $globex->id, '999']])
+        ->assertReturned(fn ($result) => $result['columns'][0]['count'] === 2 && array_column($result['columns'][0]['cards'], 'title') === ['Alpha', 'Beta'])
+        ->call('kanbanRefresh', '', ['project_id' => ['999'], 'urgent' => '1'])
+        ->assertReturned(fn ($result) => $result['columns'][0]['count'] === 1 && $result['columns'][0]['cards'][0]['title'] === 'Alpha')
+        ->call('kanbanRefresh', '', ['project_id' => [], 'urgent' => false, 'unknown' => 'x'])
+        ->assertReturned(fn ($result) => $result['columns'][0]['count'] === 3);
+});
+
+it('tells the browser each filter\'s type and whether to keep the state in the URL', function () {
+    $acme = project('Acme');
+
+    $config = Livewire::test(TaskBoard::class)->instance()->getKanbanConfig();
+
+    expect($config['url'])->toBeTrue()
+        ->and($config['filters'])->toBe([
+            ['name' => 'project_id', 'label' => 'Project', 'type' => 'multiple', 'options' => [['value' => (string) $acme->id, 'label' => 'Acme']]],
+            ['name' => 'urgent', 'label' => 'Urgent', 'type' => 'toggle', 'options' => []],
+        ]);
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->persistInUrl(false);
+        }
+    };
+
+    expect(Livewire::test($component::class)->instance()->getKanbanConfig()['url'])->toBeFalse();
+});
+
 it('refreshes as many cards as the browser already shows', function () {
     foreach (range(1, 3) as $i) {
         task("Task {$i}");
