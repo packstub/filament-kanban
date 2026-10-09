@@ -18,9 +18,13 @@ class Column
 {
     use Conditionable;
 
-    protected string|Closure|null $label = null;
+    protected string|Htmlable|Closure|null $label = null;
 
     protected string|Closure|null $color = null;
+
+    protected string|BackedEnum|Closure|null $icon = null;
+
+    protected string|Closure|null $description = null;
 
     protected bool|Closure $visible = true;
 
@@ -72,9 +76,26 @@ class Column
         }, $enum::cases());
     }
 
-    public function label(string|Closure|null $label): static
+    /** Plain text is escaped; an Htmlable (an HtmlString, a rendered view) is drawn as HTML. */
+    public function label(string|Htmlable|Closure|null $label): static
     {
         $this->label = $label;
+
+        return $this;
+    }
+
+    /** A Heroicon (name or enum) next to the colour dot in the header. */
+    public function icon(string|BackedEnum|Closure|null $icon): static
+    {
+        $this->icon = $icon;
+
+        return $this;
+    }
+
+    /** A tooltip on the column header: what belongs here, who moves cards out. */
+    public function description(string|Closure|null $text): static
+    {
+        $this->description = $text;
 
         return $this;
     }
@@ -190,6 +211,27 @@ class Column
         }
 
         return (string) ($label ?? str($this->name)->headline());
+    }
+
+    /** Whether getLabel() is HTML (an Htmlable label) rather than text for the browser to escape. */
+    public function hasHtmlLabel(): bool
+    {
+        return $this->evaluate($this->label) instanceof Htmlable;
+    }
+
+    /** The icon rendered to SVG, for the browser. */
+    public function getIcon(): ?string
+    {
+        $icon = $this->evaluate($this->icon);
+
+        return $icon === null ? null : \Filament\Support\generate_icon_html($icon)?->toHtml();
+    }
+
+    public function getDescription(): ?string
+    {
+        $description = $this->evaluate($this->description);
+
+        return blank($description) ? null : (string) $description;
     }
 
     public function getColor(): ?string

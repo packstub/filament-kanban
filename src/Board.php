@@ -410,6 +410,9 @@ class Board
         return array_map(fn (Column $column) => [
             'name' => $column->getName(),
             'label' => $column->getLabel(),
+            'labelHtml' => $column->hasHtmlLabel(),
+            'icon' => $column->getIcon(),
+            'description' => $column->getDescription(),
             'color' => $column->getColor(),
             'collapsed' => $column->isCollapsed(),
             'droppable' => $column->isDroppable(),
@@ -485,6 +488,12 @@ class Board
 
         if (! $source || ! $target) {
             throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
+        }
+
+        // The card's own rule (Card::locked()), re-read from the record: one card, so
+        // the card closure runs once here, never over the column.
+        if (($this->presentCard($record)['draggable'] ?? true) === false) {
+            throw new MoveRejected(__('packstub-kanban::kanban.locked'));
         }
 
         if ($from !== $to) {

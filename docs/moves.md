@@ -4,7 +4,7 @@
 
 1. The card moves in the browser at once, the column counts change, and the card is marked as pending.
 2. The browser asks the server (`kanbanMove`, a renderless Livewire call: nothing is re-rendered).
-3. The server loads the record through the board's `query()` and checks the rules: both columns are visible to this user, the source is `draggable`, the target is `droppable`, `accepts` the source, and is not at its [WIP limit](columns.md#wip-limits).
+3. The server loads the record through the board's `query()` and checks the rules: both columns are visible to this user, the card is not [locked](cards.md#locking-a-card), the source is `draggable`, the target is `droppable`, `accepts` the source, and is not at its [WIP limit](columns.md#wip-limits).
 4. Your move logic runs (by default: set the column attribute and save).
 5. The server answers with the card as it looks now; the card flashes once. If anything refused the move, the card slides back and the reason is shown as a notification.
 

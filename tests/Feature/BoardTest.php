@@ -4,6 +4,7 @@ use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\HtmlString;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
@@ -276,4 +277,64 @@ it('shapes avatars and the actions a card offers', function () {
         'avatars' => [['url' => 'https://acme.test/a.png', 'name' => 'Ana Pop'], ['url' => null, 'name' => 'Dan Ionescu']],
         'actions' => [],
     ])->and(Card::make()->title('B')->toArray())->not->toHaveKeys(['avatars', 'actions']);
+});
+
+it('shapes a description, progress, a due date and badge icons, and leaves them out when unset', function () {
+    $card = Card::make()
+        ->title('A')
+        ->description('Two boxes, leave them at the gate')
+        ->progress(3, 5)
+        ->due(new DateTimeImmutable('2026-10-07'))
+        ->badge('call', 'sky', icon: 'heroicon-m-phone')
+        ->badge('plain', 'gray');
+
+    expect($card->toArray())->toMatchArray([
+        'description' => 'Two boxes, leave them at the gate',
+        'progress' => ['value' => 0.6, 'label' => '3/5'],
+        'due' => ['date' => '2026-10-07', 'label' => 'Oct 7'],
+    ])
+        ->and($card->toArray()['badges'][0]['icon'])->toContain('<svg')
+        ->and($card->toArray()['badges'][1])->not->toHaveKey('icon')
+        ->and(Card::make()->progress(0.4)->toArray()['progress'])->toBe(['value' => 0.4, 'label' => '40%'])
+        ->and(Card::make()->progress(7, 5)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '7/5'])
+        ->and(Card::make()->progress(1, 0)->toArray()['progress']['value'])->toBe(0.0)
+        ->and(Card::make()->due(new DateTimeImmutable('2026-10-07'), 'Tomorrow')->toArray()['due']['label'])->toBe('Tomorrow')
+        ->and(Card::make()->title('B')->progress(null)->due(null)->toArray())->not->toHaveKeys(['description', 'progress', 'due', 'draggable']);
+
+    config(['app.date_format' => 'd.m.Y']);
+
+    expect(Card::make()->due(new DateTimeImmutable('2026-10-07'))->toArray()['due']['label'])->toBe('07.10.2026');
+});
+
+it('locks a card: said in the JSON, refused by the server for a move and a reorder alike', function () {
+    $locked = task('Locked');
+    $free = task('Free');
+
+    $board = board()->reorderable('sort')->card(fn (Task $task) => Card::make()->title($task->title)->locked($task->title === 'Locked'));
+
+    expect($board->getCards('todo')[0])->toMatchArray(['title' => 'Locked', 'draggable' => false])
+        ->and($board->getCards('todo')[1])->not->toHaveKey('draggable')
+        ->and(Card::make()->draggable(false)->isDraggable())->toBeFalse()
+        ->and(Card::make()->locked(false)->isDraggable())->toBeTrue()
+        ->and(fn () => $board->move((string) $locked->id, 'doing'))->toThrow(MoveRejected::class, 'This card cannot be moved.')
+        ->and(fn () => $board->move((string) $locked->id, 'todo', [(string) $free->id, (string) $locked->id]))->toThrow(MoveRejected::class, 'This card cannot be moved.')
+        ->and($locked->fresh()->status)->toBe('todo')
+        ->and($locked->fresh()->sort)->toBeNull();
+
+    $board->move((string) $free->id, 'doing');
+
+    expect($free->fresh()->status)->toBe('doing');
+});
+
+it('tells the browser whether a column label is HTML, and gives it the icon and description', function () {
+    $state = board()->columns([
+        Column::make('todo')->label(fn () => new HtmlString('<em>To do</em>'))->icon('heroicon-m-inbox')->description(fn () => 'New work lands here'),
+        Column::make('doing')->label('<b>not html</b>'),
+        Column::make('done'),
+    ])->getState();
+
+    expect($state[0])->toMatchArray(['label' => '<em>To do</em>', 'labelHtml' => true, 'description' => 'New work lands here'])
+        ->and($state[0]['icon'])->toContain('<svg')
+        ->and($state[1])->toMatchArray(['label' => '<b>not html</b>', 'labelHtml' => false, 'icon' => null, 'description' => null])
+        ->and(Column::make('x')->label(new HtmlString('<i>x</i>'))->hasHtmlLabel())->toBeTrue();
 });
