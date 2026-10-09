@@ -281,6 +281,8 @@ it('broadcasts on a private channel named after the key unless told otherwise, w
     $board = board()->key('App\\Filament\\Pages\\Deals')->broadcast();
 
     expect($board->getBroadcastChannel())->toBe('kanban.app-filament-pages-deals') // no dots: a {board} route parameter stops at one
+        ->and(board()->key('project.1.5')->broadcast()->getBroadcastChannel())->toBe('kanban.project-1-5') // replaced, not dropped:
+        ->and(board()->key('project.15')->broadcast()->getBroadcastChannel())->toBe('kanban.project-15') // two boards, two channels
         ->and($board->getBroadcastEvent())->toBe('.kanban.changed')
         ->and($board->isBroadcastingNow())->toBeFalse()
         ->and(board()->broadcast(fn () => 'tenant.7.kanban', 'deals.changed')->getBroadcastChannel())->toBe('tenant.7.kanban')

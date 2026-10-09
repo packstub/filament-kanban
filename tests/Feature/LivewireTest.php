@@ -108,7 +108,9 @@ it('tells the other tabs about a move only when the board broadcasts, with the t
         && $e->broadcastWith() === ['board' => 'tasks', 'id' => (string) $task->id, 'from' => 'doing', 'to' => 'done', 'origin' => 'tab1']);
 
     $test->call('kanbanMove', (string) $task->id, 'doing') // refused: doing accepts cards from todo only
-        ->assertReturned(fn ($result) => $result['ok'] === false);
+        ->assertReturned(fn ($result) => $result['ok'] === false)
+        ->call('kanbanMove', (string) $task->id, 'done') // dropped back where it was, nothing reordered: nothing to tell
+        ->assertReturned(fn ($result) => $result['ok'] === true);
 
     Event::assertDispatchedTimes(BoardChanged::class, 1);
 });
