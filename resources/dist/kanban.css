@@ -287,9 +287,10 @@ div.pk { visibility: visible; }
 .pk-col-locked .pk-card, .pk-card-locked { cursor: default; }
 
 /* The lock sits in the card's top-right corner, whatever lines the card has; the menu button moves over. */
-.pk-lock { position: absolute; top: 0.5rem; right: 0.55rem; display: grid; color: var(--pk-muted); }
+.pk-lock { position: absolute; top: 0.5rem; inset-inline-end: 0.55rem; display: grid; color: var(--pk-muted); }
 .pk .pk-lock svg { width: 0.75rem; height: 0.75rem; }
 .pk-card-locked .pk-card-top { padding-inline-end: 2.5rem; }
+.pk-card-locked .pk-title { padding-inline-end: 1.25rem; }
 .pk-card-locked .pk-card-menu { right: 1.6rem; }
 
 .pk-card-accent::before {
