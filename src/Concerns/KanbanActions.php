@@ -34,7 +34,13 @@ trait KanbanActions
         foreach ($board->getAllColumns() as $column) {
             $column->actions(array_map(function (Action $action) use ($seen) {
                 if ($seen->contains($action)) {
-                    return clone $action;
+                    $copy = clone $action;
+
+                    if ($copy instanceof ColumnAction) {
+                        $copy->copiedFrom($action);
+                    }
+
+                    return $copy;
                 }
 
                 $seen->attach($action);
@@ -105,10 +111,10 @@ trait KanbanActions
             $this->dispatch('packstub-kanban-refresh');
 
             $arguments = $action->getArguments();
-            rescue(fn () => $this->getKanban()->broadcastChange(
+            $this->getKanban()->broadcastChange(
                 id: is_scalar($arguments['kanbanRecord'] ?? null) ? (string) $arguments['kanbanRecord'] : null,
                 origin: is_string($arguments['kanbanOrigin'] ?? null) ? $arguments['kanbanOrigin'] : null,
-            ), report: true);
+            );
 
             return $result;
         });

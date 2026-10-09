@@ -21,6 +21,9 @@ class ColumnAction extends Action
 
     protected ?Column $column = null;
 
+    /** The object this one was copied from, when one action was given to several columns. */
+    protected ?ColumnAction $original = null;
+
     public function board(Board $board): static
     {
         $this->board = $board;
@@ -31,6 +34,14 @@ class ColumnAction extends Action
     public function column(Column $column): static
     {
         $this->column = $column;
+
+        return $this;
+    }
+
+    /** @internal set by the board when it copies an action shared across columns */
+    public function copiedFrom(ColumnAction $original): static
+    {
+        $this->original = $original;
 
         return $this;
     }
@@ -48,16 +59,19 @@ class ColumnAction extends Action
     /** The column's cards, with the search and filters the browser sent (validated by the board as on a refresh). */
     public function getColumnQuery(): Builder
     {
+        if (! $this->board || ! $this->column) {
+            throw new LogicException("The column action [{$this->getName()}] has no column: give it to a column with Column::actions(), on a board.");
+        }
+
         $arguments = $this->getArguments();
 
         // A copy of a shared object whose closures reach $this still points at the original,
-        // bound to the first column: its query would be the wrong column's cards. The action
-        // being run is the one mounted on the component; it must be this one, on this column.
+        // bound to the first column: its query would be the wrong column's cards. Caught when
+        // that copy is the action being run; another column's own action is never refused.
         $mounted = $this->getLivewire()?->getMountedAction();
-        $column = $this->column?->getName();
 
-        if ((isset($arguments['kanbanColumn']) && $arguments['kanbanColumn'] !== $column)
-            || ($mounted instanceof ColumnAction && $mounted !== $this && $mounted->getColumn()?->getName() !== $column)) {
+        if ((isset($arguments['kanbanColumn']) && $arguments['kanbanColumn'] !== $this->column->getName())
+            || ($mounted instanceof ColumnAction && $mounted !== $this && $mounted->original === $this)) {
             throw new LogicException("The column action [{$this->getName()}] object is shared across columns: give each column its own instance, or take \$query / \$column as closure arguments instead of \$this.");
         }
 

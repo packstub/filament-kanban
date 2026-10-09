@@ -151,6 +151,40 @@ it('refuses to run a shared $this-based column action on another column\'s cards
         ->and($done->fresh()->status)->toBe('done');
 });
 
+it('re-renders with one column\'s action open while another column\'s own action reads $query', function () {
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            $archive = fn () => ColumnAction::make('archive')
+                ->requiresConfirmation()
+                ->visible(fn (Builder $query) => $query->exists())
+                ->action(fn (Builder $query) => $query->update(['status' => 'archived']));
+
+            return parent::kanban($board)->columns([
+                Column::make('todo')->actions([$archive()]),
+                Column::make('done')->actions([$archive()]),
+            ]);
+        }
+    };
+    task('A', 'todo');
+    $done = task('B', 'done');
+
+    Livewire::test($component::class)
+        ->mountAction('column:todo:archive', ['kanbanColumn' => 'todo'])
+        ->call('$refresh') // a full render with the modal open: the done column's action is evaluated too
+        ->assertActionMounted('column:todo:archive')
+        ->callMountedAction()
+        ->assertHasNoErrors();
+
+    expect(Task::where('status', 'archived')->count())->toBe(1)
+        ->and($done->fresh()->status)->toBe('done');
+});
+
+it('says what is missing when a column action is used off a column', function () {
+    expect(fn () => ColumnAction::make('loose')->getColumnQuery())->toThrow(LogicException::class, 'has no column');
+});
+
 it('shrugs off arguments of the wrong type', function () {
     $task = task('Alpha', 'done');
     $other = task('Beta');

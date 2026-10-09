@@ -76,7 +76,10 @@ trait InteractsWithKanban
         }
 
         $this->kanbanMoved($id, $to, $card);
-        rescue(fn () => $board->broadcastChange($id, (string) $from, $to, $origin), report: true);
+        // A drop back where it was on a board that does not reorder saved nothing: no one to tell.
+        if ((string) $from !== $to || ($order !== null && $board->isReorderable())) {
+            $board->broadcastChange($id, (string) $from, $to, $origin);
+        }
 
         return [
             'ok' => true,
@@ -154,7 +157,7 @@ trait InteractsWithKanban
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
             'undo' => $board->getUndo(),
-            'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent()] : null,
+            'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent(), 'board' => $board->getKey()] : null,
             'cardActions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getCardActions() : []),
             'cardAction' => $board->getCardAction(),
             'createAction' => $actions && ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,

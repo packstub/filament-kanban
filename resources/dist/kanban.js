@@ -83,6 +83,7 @@ export default function packstubKanban(config) {
             // a burst of events is one request. Echo may arrive after the board (Filament
             // dispatches EchoLoaded when it does).
             if (config.broadcast) {
+                this.$watch('menu', (menu) => menu || this.settle())
                 this.onEcho = () => this.listen()
                 window.Echo ? this.listen() : window.addEventListener('EchoLoaded', this.onEcho, { once: true })
             }
@@ -94,7 +95,9 @@ export default function packstubKanban(config) {
             window.removeEventListener('EchoLoaded', this.onEcho)
             clearInterval(this.poller)
             clearTimeout(this.echoTimer)
-            if (this.channel) window.Echo?.leave(config.broadcast.channel)
+            // Only this board's listener: the channel may be shared with other boards and the app.
+            if (this.channel) this.channel.stopListening(config.broadcast.event, this.onChange)
+            document.removeEventListener('visibilitychange', this.onVisible)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
@@ -103,20 +106,27 @@ export default function packstubKanban(config) {
         listen() {
             if (this.channel || ! window.Echo) return
 
-            this.channel = window.Echo.private(config.broadcast.channel)
-            this.channel.listen(config.broadcast.event, (payload) => {
+            this.onChange = (payload) => {
                 if (payload?.origin && payload.origin === ORIGIN) return
+                // Another board on the same channel (two keys mapped to one channel name).
+                if (payload?.board != null && config.broadcast.board != null && payload.board !== config.broadcast.board) return
                 clearTimeout(this.echoTimer)
                 this.echoTimer = setTimeout(() => {
                     this.stale = true
                     this.settle()
                 }, 300)
-            })
+            }
+            this.onVisible = () => this.settle()
+            document.addEventListener('visibilitychange', this.onVisible)
+
+            this.channel = window.Echo.private(config.broadcast.channel)
+            this.channel.listen(config.broadcast.event, this.onChange)
         },
 
-        // A change that arrived while a card was in the air is loaded once the drop has settled.
+        // A change that arrived while a card was in the air, a menu was open or the tab was in
+        // the background is loaded once the drop has settled, the menu closed, the tab shown.
         settle() {
-            if (this.stale && ! this.dragging && ! this.pending) {
+            if (this.stale && ! this.dragging && ! this.pending && ! this.menu && ! document.hidden) {
                 this.stale = false
                 this.refresh(true)
             }

@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Support\Traits\Conditionable;
 use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Events\BoardChangedNow;
@@ -403,8 +402,9 @@ class Board
         $channel = $this->broadcastChannel instanceof Closure ? app()->call($this->broadcastChannel) : $this->broadcastChannel;
 
         // A class name is the default key; a channel name must not carry backslashes or
-        // dots (a `{board}` route parameter in routes/channels.php stops at a dot).
-        return (string) ($channel ?? 'kanban.'.Str::slug(str_replace('\\', '-', $this->key ?? 'board')));
+        // dots (a `{board}` route parameter in routes/channels.php stops at a dot), nor
+        // colons. Each is replaced, never dropped, so `project.1.5` and `project.15` differ.
+        return (string) ($channel ?? 'kanban.'.strtolower(trim(preg_replace('/[^A-Za-z0-9_\-=@,;]+/', '-', $this->key ?? 'board'), '-')));
     }
 
     public function isBroadcastingNow(): bool
@@ -429,13 +429,16 @@ class Board
             return;
         }
 
-        $event = $this->broadcastNow ? BoardChangedNow::class : BoardChanged::class;
-        $channel = $this->getBroadcastChannel();
+        // The channel is the app's closure: resolved inside rescue() too, so no caller needs its own.
+        rescue(function () use ($id, $from, $to, $origin) {
+            $event = $this->broadcastNow ? BoardChangedNow::class : BoardChanged::class;
+            $channel = $this->getBroadcastChannel();
 
-        DB::afterCommit(fn () => rescue(
-            fn () => $event::dispatch($channel, $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin),
-            report: true,
-        ));
+            DB::afterCommit(fn () => rescue(
+                fn () => $event::dispatch($channel, $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin),
+                report: true,
+            ));
+        }, report: true);
     }
 
     /** @return class-string<Model> */
@@ -485,7 +488,7 @@ class Board
         }
 
         $summary = app()->call($this->summarize, [
-            'query' => $this->filteredQuery($search, $filters)->where($this->qualifiedColumnAttribute(), $columnName),
+            'query' => $this->getColumnQuery($columnName, $search, $filters),
             'column' => $column,
         ]);
 
@@ -552,8 +555,7 @@ class Board
             return [];
         }
 
-        $query = $this->filteredQuery($search, $filters)
-            ->where($this->qualifiedColumnAttribute(), $columnName);
+        $query = $this->getColumnQuery($columnName, $search, $filters);
 
         foreach ($this->orderingFor($column) as [$attribute, $direction]) {
             $query->orderBy($attribute, $direction);

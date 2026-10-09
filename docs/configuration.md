@@ -67,7 +67,7 @@ With [Laravel Echo](https://laravel.com/docs/broadcasting) on the page, `broadca
 ->broadcastNow()                                         // sent during the request instead of through the queue
 ```
 
-**The channel.** By default the channel is `kanban.` + a slug of the board's `key()`: with the default key, the page class, `App\Filament\Pages\Deals` gives `kanban.app-filament-pages-deals` (no dots, so a `{board}` route parameter matches it); `->key('deals')` gives `kanban.deals`. Authorise it in `routes/channels.php` as any private channel, or realtime silently does nothing (Echo gets a 403):
+**The channel.** By default the channel is `kanban.` + a slug of the board's `key()`: with the default key, the page class, `App\Filament\Pages\Deals` gives `kanban.app-filament-pages-deals` (dots, colons and backslashes become `-`, so a `{board}` route parameter matches it and `project.1.5` and `project.15` stay apart); `->key('deals')` gives `kanban.deals`. Authorise it in `routes/channels.php` as any private channel, or realtime silently does nothing (Echo gets a 403):
 
 ```php
 use App\Models\Deal;
@@ -87,7 +87,7 @@ Broadcast::channel('tenant.{tenant}.kanban', fn (User $user, string $tenant) => 
 
 **The queue.** `BoardChanged` implements `ShouldBroadcast`: it is queued, on your `QUEUE_CONNECTION`, once the transaction that made the change commits (`DB::afterCommit()`, so an action with `databaseTransaction()` never broadcasts a change that is rolled back), so a worker must run (`php artisan queue:work`; with `QUEUE_CONNECTION=database` and no worker nothing is ever sent). `BROADCAST_CONNECTION` picks the broadcaster (`reverb`, `pusher`, `ably`; `log` is handy while setting up). `broadcastNow()` skips the queue: the event goes out during the request, which is simpler and fine for a small team, but a broadcaster that is down then costs every move its timeout. Either way, a failing broadcast never fails the change: it is saved by then, the failure is reported to your exception handler, and the move answers "ok".
 
-The event is broadcast as `kanban.changed` (Echo's `.kanban.changed`, the leading dot added for you if you leave it out) and carries `board` (the key), `id`, `from`, `to` and `origin`, so your own listener (`Echo.private('kanban.deals').listen('.kanban.changed', ...)`) can use it too. Without Echo on the page the option does nothing; `poll()` keeps working, and both may be set. `CardMoved` is unchanged: it stays the event your server-side listeners use.
+The event is broadcast as `kanban.changed` (Echo's `.kanban.changed`, the leading dot added for you if you leave it out) and carries `board` (the key), `id`, `from`, `to` and `origin`, so your own listener (`Echo.private('kanban.deals').listen('.kanban.changed', ...)`) can use it too. A board ignores events for another board key on its channel, and the tabs in the background (or with a menu open) wait until they are shown (or it closes) to reload. Leaving the page stops this board's listener only; the channel stays for the rest of the page. Without Echo on the page the option does nothing; `poll()` keeps working, and both may be set. `CardMoved` is unchanged: it stays the event your server-side listeners use.
 
 ## Focus mode
 

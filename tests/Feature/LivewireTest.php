@@ -100,7 +100,7 @@ it('tells the other tabs about a move only when the board broadcasts, with the t
 
     $test = Livewire::test($component::class);
 
-    expect($test->instance()->getKanbanConfig()['broadcast'])->toBe(['channel' => 'team.1.kanban', 'event' => '.kanban.changed']);
+    expect($test->instance()->getKanbanConfig()['broadcast'])->toBe(['channel' => 'team.1.kanban', 'event' => '.kanban.changed', 'board' => 'tasks']);
 
     $test->call('kanbanMove', (string) $task->id, 'done', null, '', [], 'tab1');
 
