@@ -44,9 +44,12 @@
     --pk-soft: var(--gray-300);
 }
 
-/* The view hides the board inline until this file applies (see board.blade.php). */
-div.pk { visibility: visible; }
+/* The view hides the board inline until this file applies, and reveals it after 1.5 s should it never apply (see board.blade.php). */
+div.pk { visibility: visible; animation: none; }
 .pk [x-cloak] { display: none !important; }
+
+/* announcements for screen readers: present in the tree, never on screen */
+.pk-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 .pk svg, .sortable-fallback.pk-card svg { width: 1rem; height: 1rem; flex: none; }
 
 /* ------------------------------------------------------------------ toolbar */
@@ -78,7 +81,8 @@ div.pk { visibility: visible; }
 .pk-btn { padding: 0 0.7rem; cursor: pointer; }
 .pk-icon-btn { justify-content: center; width: 2.125rem; padding: 0; cursor: pointer; }
 .pk-btn:hover, .pk-icon-btn:hover { border-color: var(--pk-card-hover); color: var(--pk-text); }
-.pk-btn:focus-visible, .pk-icon-btn:focus-visible, .pk-card-link:focus-visible, .pk-more:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-btn:focus-visible, .pk-icon-btn:focus-visible, .pk-card-link:focus-visible, .pk-more:focus-visible, .pk-menu-item:focus-visible, .pk-tab:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-density-btn[aria-pressed="true"] { color: var(--pk-text); border-color: var(--pk-card-hover); }
 .pk-btn-count { color: var(--pk-muted); font-variant-numeric: tabular-nums; }
 
 .pk-search { padding: 0 0.6rem; min-width: min(20rem, 100%); color: var(--pk-muted); }
@@ -92,6 +96,17 @@ div.pk { visibility: visible; }
 .pk-filter select { appearance: none; border: 0; padding: 0 1rem 0 0; background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2371717a' stroke-width='1.5'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E") no-repeat right center / 0.875rem; color: var(--pk-text); font: inherit; cursor: pointer; outline: none; box-shadow: none; }
 .dark .pk-filter select option { background: var(--gray-900); }
 .pk-filter-on { border-color: var(--pk-ring); }
+
+/* multiple() opens a popover of checkboxes; toggle() is an on/off chip */
+.pk-filter-btn:hover { border-color: var(--pk-card-hover); }
+.pk-filter-btn:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-filter-btn strong { font-weight: 500; color: var(--pk-text); font-variant-numeric: tabular-nums; }
+.pk-filter-btn svg { width: 0.875rem; height: 0.875rem; color: var(--pk-muted); }
+.pk-filter-toggle.pk-filter-on { background: color-mix(in oklab, var(--pk-ring) 10%, var(--pk-card-bg)); }
+.pk-filter-toggle.pk-filter-on span, .pk-filter-toggle.pk-filter-on svg { color: var(--pk-text); }
+.pk-menu-start { left: 0; }
+.pk-menu-start.pk-menu-end { left: auto; } /* flipped by openFilter() near the right edge */
+.pk-filter-menu { max-height: min(18rem, 60vh); overflow-y: auto; scrollbar-width: thin; }
 
 /* ------------------------------------------------------------------ menus */
 
@@ -182,6 +197,8 @@ div.pk { visibility: visible; }
 }
 
 .pk-dot { width: 0.5rem; height: 0.5rem; flex: none; border-radius: 999px; }
+.pk-col-icon { display: grid; flex: none; color: var(--pk-muted); }
+.pk .pk-col-icon svg { width: 0.875rem; height: 0.875rem; }
 
 .pk-col-title { display: flex; flex-direction: column; min-width: 0; }
 .pk-summary { overflow: hidden; font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; color: var(--pk-muted); }
@@ -194,7 +211,7 @@ div.pk { visibility: visible; }
     font-variant-numeric: tabular-nums;
 }
 
-.pk-fold, .pk-create {
+.pk-fold, .pk-create, .pk-col-menu {
     width: 1.625rem;
     height: 1.625rem;
     border-color: transparent;
@@ -203,8 +220,13 @@ div.pk { visibility: visible; }
     opacity: 0;
 }
 
-.pk-col:hover .pk-fold, .pk-fold:focus-visible, .pk-col:hover .pk-create, .pk-create:focus-visible { opacity: 1; }
-.pk-create:hover { color: var(--pk-text); }
+.pk-col:hover .pk-fold, .pk-fold:focus-visible, .pk-col:hover .pk-create, .pk-create:focus-visible,
+.pk-col:hover .pk-col-menu, .pk-col-menu:focus-visible, .pk-col-menu[aria-expanded="true"] { opacity: 1; }
+.pk-create:hover, .pk-col-menu:hover { color: var(--pk-text); }
+
+/* the column's own menu opens under its header, above the cards */
+.pk-col-menu-wrap { display: flex; }
+.pk-col-menu-wrap .pk-menu { z-index: 41; }
 
 /* a column at its WIP limit */
 .pk-col-full .pk-count { color: var(--danger-600); font-weight: 600; }
@@ -259,7 +281,7 @@ div.pk { visibility: visible; }
 .pk-col-folded .pk-cards, .pk-col-folded .pk-col-empty, .pk-col-folded .pk-more { display: none; }
 .pk-col-folded .pk-col-head { flex-direction: column; gap: 0.6rem; height: 100%; padding: 0.75rem 0; }
 .pk-col-folded .pk-col-head h3 { writing-mode: vertical-rl; }
-.pk-col-folded .pk-summary, .pk-col-folded .pk-create { display: none; }
+.pk-col-folded .pk-summary, .pk-col-folded .pk-create, .pk-col-folded .pk-col-menu-wrap { display: none; }
 .pk-col-folded .pk-count { margin: 0; }
 .pk-col-folded .pk-fold { order: -1; margin: 0; opacity: 1; transform: rotate(180deg); }
 
@@ -282,7 +304,14 @@ div.pk { visibility: visible; }
 }
 
 .pk-card:hover { border-color: var(--pk-card-hover); }
-.pk-col-locked .pk-card { cursor: default; }
+.pk-col-locked .pk-card, .pk-card-locked { cursor: default; }
+
+/* The lock sits in the card's top-right corner, whatever lines the card has; the menu button moves over. */
+.pk-lock { position: absolute; top: 0.5rem; inset-inline-end: 0.55rem; display: grid; color: var(--pk-muted); }
+.pk .pk-lock svg { width: 0.75rem; height: 0.75rem; }
+.pk-card-locked .pk-card-top { padding-inline-end: 2.5rem; }
+.pk-card-locked :is(.pk-title, .pk-description) { padding-inline-end: 1.25rem; }
+.pk-card-locked .pk-card-menu { inset-inline-end: 1.6rem; }
 
 .pk-card-accent::before {
     content: "";
@@ -308,6 +337,7 @@ div.pk { visibility: visible; }
 .pk-eyebrow { font: 500 0.6875rem/1.2 var(--pk-mono); letter-spacing: 0.02em; color: var(--pk-muted); }
 .pk-aside { margin-inline-start: auto; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pk-text); white-space: nowrap; }
 .pk-title { font-size: 0.8125rem; font-weight: 500; line-height: 1.3; color: var(--pk-text); overflow-wrap: anywhere; }
+.pk-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.75rem; line-height: 1.35; color: var(--pk-muted); overflow-wrap: anywhere; }
 
 .pk-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; min-width: 0; }
 .pk-avatars { display: flex; margin-inline-start: auto; padding-inline-start: 0.25rem; }
@@ -330,7 +360,23 @@ div.pk { visibility: visible; }
 
 .pk-meta { min-width: 0; overflow: hidden; font-size: 0.72rem; color: var(--pk-muted); white-space: nowrap; text-overflow: ellipsis; }
 
+.pk-due { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.72rem; font-variant-numeric: tabular-nums; color: var(--pk-muted); white-space: nowrap; }
+.pk .pk-due svg { width: 0.8rem; height: 0.8rem; }
+.pk-due-today { color: var(--warning-600); }
+.pk-due-past { color: var(--danger-600); }
+.dark .pk-due-today { color: var(--warning-400); }
+.dark .pk-due-past { color: var(--danger-400); }
+
+/* on its own line at the end of the foot */
+.pk-progress { flex: 0 0 100%; height: 0.25rem; margin-top: 0.1rem; overflow: hidden; border-radius: 999px; background: var(--gray-200); }
+.dark .pk-progress { background: rgb(255 255 255 / 0.1); }
+.pk-progress-bar { display: block; height: 100%; border-radius: inherit; background: var(--primary-500); transition: width 0.2s; }
+.pk-progress-full { background: var(--success-500); }
+
 .pk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
     padding: 0.1rem 0.35rem;
     border-radius: 0.25rem;
     background: color-mix(in oklab, var(--pk-badge) 14%, transparent);
@@ -341,10 +387,13 @@ div.pk { visibility: visible; }
     white-space: nowrap;
 }
 
+.pk-badge-icon { display: grid; }
+.pk .pk-badge-icon svg { width: 0.75rem; height: 0.75rem; }
+
 .pk-card-menu {
     position: absolute;
     top: 0.35rem;
-    right: 0.3rem;
+    inset-inline-end: 0.3rem;
     display: grid;
     place-items: center;
     width: 1.5rem;
@@ -359,7 +408,7 @@ div.pk { visibility: visible; }
 .pk-card:hover .pk-card-menu, .pk-card-menu:focus-visible, .pk-card-menu[aria-expanded="true"] { opacity: 1; }
 .pk-card-menu:hover { color: var(--pk-text); background: var(--gray-100); }
 .dark .pk-card-menu:hover { background: rgb(255 255 255 / 0.08); }
-@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold, .pk-create { opacity: 1; } }
+@media (hover: none) { .pk-card-menu { opacity: 1; } .pk-fold, .pk-create, .pk-col-menu { opacity: 1; } }
 
 /* "Move to" opens inside the card, so the column's scroll never clips it */
 .pk-card-popover { position: static; min-width: 0; margin: 0 0.4rem 0.4rem; box-shadow: none; }
@@ -380,6 +429,53 @@ div.pk { visibility: visible; }
     .pk-drag { transform: none; }
 }
 
+/* ------------------------------------------------------------------ compact density */
+
+.pk-compact { --pk-gap: 0.5rem; }
+.pk-compact .pk-cards { gap: 0.25rem; padding: 0.125rem 0.375rem 0.375rem; }
+.pk-compact .pk-card-link { gap: 0.15rem; padding: 0.4rem 0.55rem 0.45rem; }
+.pk-compact .pk-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pk-compact .pk-card-menu { top: 0.2rem; }
+
+/* ------------------------------------------------------------------ narrow screens: column tabs */
+
+/* The root gets .pk-narrow from the same media query as below (see init()); the tab bar
+   and the one-column layout hang off it, so the script and the stylesheet never disagree. */
+.pk-tabs {
+    display: none;
+    gap: 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pk-tabs::-webkit-scrollbar { display: none; }
+.pk-narrow .pk-tabs { display: flex; }
+
+.pk-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2.125rem;
+    padding: 0 0.7rem;
+    border: 1px solid transparent;
+    border-radius: var(--pk-card-radius);
+    color: var(--pk-soft);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.pk-tab-count { color: var(--pk-muted); font-variant-numeric: tabular-nums; }
+.pk-tab-on { border-color: var(--pk-card-border); background: var(--pk-card-bg); color: var(--pk-text); }
+
+.pk-narrow .pk-col:not(.pk-col-tab) { display: none; }
+.pk-narrow .pk-col-tab { flex: 1 1 100%; min-width: 0; }
+.pk-narrow .pk-fold { display: none; }
+
 /* ------------------------------------------------------------------ focus mode (no sidebar) */
 
 @media (min-width: 64rem) {
@@ -397,3 +493,124 @@ div.pk { visibility: visible; }
 }
 
 .pk-page .fi-header { gap: 0.75rem; }
+
+/* ------------------------------------------------------------------ selection */
+
+.pk-selection {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.375rem 0 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--pk-ring) 40%, transparent);
+    border-radius: var(--pk-card-radius);
+    background: color-mix(in oklab, var(--pk-ring) 8%, var(--pk-card-bg));
+}
+
+.pk-selection .pk-btn, .pk-selection .pk-icon-btn { height: 1.875rem; margin: 0.125rem 0; }
+.pk-selection-count { font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pk-text); }
+.pk-selection .pk-btn kbd { font: 500 0.6875rem/1 var(--pk-mono); padding: 0.15rem 0.35rem; border: 1px solid var(--pk-card-border); border-radius: 0.25rem; color: var(--pk-muted); }
+.pk-selection .pk-menu-icon { color: inherit; }
+.pk-btn-danger { color: var(--danger-600); }
+.dark .pk-btn-danger { color: var(--danger-400); }
+
+.pk-card-check {
+    position: absolute;
+    top: 0.5rem;
+    right: 2rem;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    border: 1px solid var(--pk-card-hover);
+    border-radius: 0.25rem;
+    background: var(--pk-card-bg);
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.pk-card-check svg { width: 0.75rem; height: 0.75rem; opacity: 0; }
+.pk-card:hover .pk-card-check, .pk-card-check:focus-visible, .pk-card-selected .pk-card-check { opacity: 1; }
+.pk-card-selected .pk-card-check { border-color: var(--pk-ring); background: var(--pk-ring); }
+.pk-card-selected .pk-card-check svg { opacity: 1; }
+.pk-card-selected { border-color: var(--pk-ring); box-shadow: 0 0 0 1px var(--pk-ring); }
+.pk-card-selected .pk-card-link { background: color-mix(in oklab, var(--pk-ring) 6%, transparent); }
+.pk-card-selected .pk-card-top { padding-inline-end: 3.25rem; }
+.pk-is-dragging .pk-card-check { display: none; }
+@media (hover: none) { .pk-card-check { opacity: 1; } .pk-card-top { padding-inline-end: 3.25rem; } }
+
+/* ------------------------------------------------------------------ swimlanes */
+
+/* A cell is a column's card list (with its empty state and "Load more"); without
+   swimlanes it is drawn through, so the column lays out exactly as before. */
+.pk-cell { display: contents; }
+
+/* With swimlanes the board is a grid: column headers on the first row, then a
+   header row and a row of cells per lane. Columns are drawn through too, so their
+   headers and cells sit on the grid; the whole board scrolls, both ways. */
+.pk-board-lanes {
+    display: grid;
+    grid-auto-rows: max-content;
+    align-content: start;
+    column-gap: var(--pk-gap);
+    row-gap: 0.5rem;
+    overflow: auto;
+    scroll-snap-type: none;
+}
+
+.pk-board-lanes .pk-col { display: contents; }
+/* Narrow screens with lanes: the selected tab's column alone, one grid column wide (see gridColumns()). */
+.pk-narrow .pk-board-lanes .pk-col:not(.pk-col-tab) { display: none; }
+
+.pk-board-lanes .pk-col-head {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    border: 1px solid var(--pk-col-border);
+    border-radius: var(--pk-radius);
+    background: var(--pk-col-bg);
+}
+
+.pk-board-lanes .pk-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 4.5rem;
+    border: 1px solid var(--pk-col-border);
+    border-radius: var(--pk-radius);
+    background: var(--pk-col-bg);
+    transition: opacity 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.pk-board-lanes .pk-cards { flex: none; overflow: visible; padding-top: 0.5rem; }
+.pk-board-lanes .pk-col-empty { inset: 0.5rem 0.5rem auto; height: 3.5rem; }
+.pk-board-lanes .pk-cell-folded, .pk-board-lanes .pk-col-folded .pk-cell { display: none; }
+.pk-board-lanes .pk-col-head { align-self: start; }
+.pk-board-lanes .pk-col-folded .pk-col-head { height: auto; padding: 0.5rem 0; }
+.pk-board-lanes .pk-col-folded .pk-col-head h3, .pk-board-lanes .pk-col-folded .pk-count { display: none; }
+
+.pk-lane { min-width: 0; }
+.pk-lane-head {
+    position: sticky;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: max-content;
+    max-width: 100%;
+    padding: 0.5rem 0.5rem 0.125rem 0;
+    user-select: none;
+}
+.pk-lane-head h4 { font-size: 0.8125rem; font-weight: 600; color: var(--pk-text); white-space: nowrap; }
+.pk-lane-head .pk-count { margin: 0; }
+.pk-lane-fold { width: 1.625rem; height: 1.625rem; border-color: transparent; background: transparent; color: var(--pk-muted); }
+.pk-lane-fold svg { transition: transform 0.15s; }
+.pk-lane-folded .pk-lane-fold svg { transform: rotate(-90deg); }
+.pk-lane-folded .pk-lane-head { opacity: 0.7; }
+
+/* while dragging, with swimlanes: the cells show where the card may go */
+.pk-is-dragging .pk-board-lanes .pk-col-target .pk-cell { box-shadow: inset 0 0 0 1.5px var(--pk-ring); background: color-mix(in oklab, var(--pk-col-bg) 88%, var(--pk-ring)); }
+.pk-is-dragging .pk-board-lanes .pk-col-blocked .pk-cell { opacity: 0.45; }

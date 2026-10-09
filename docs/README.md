@@ -12,10 +12,14 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 
 - **[Instant drag and drop](moves.md)**: a drop lands at once; if the server refuses, the card slides back with the reason.
 - **[Rules on the server](columns.md)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
-- **[Filament actions on cards](actions.md)**: edit in a slide-over, delete or run your own actions, and create in a column.
+- **[Filament actions on cards and columns](actions.md)**: edit in a slide-over, delete or run your own actions, create in a column, act on a whole column.
 - **[Column summaries](columns.md#summaries)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](cards.md)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](configuration.md#search)**: instant search, select filters and infinite scroll per column.
+- **[Search, filters and paging](configuration.md#search)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
+- **[Swimlanes](swimlanes.md)**: rows by assignee, priority or any attribute, derived from the data or defined, folded and remembered.
+- **[Bulk selection](actions.md#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
+- **[Shared boards](configuration.md#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, and an [Undo](moves.md#undo) on every move.
+- **[Keyboard, screen readers and phones](configuration.md#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
 
 ## Guides
 
@@ -24,9 +28,10 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 | [Installation](installation.md) | Requirements, the first board page, a board under a resource (its query, the Table / Board switch, the navigation badge), and embedding a board in any Livewire component |
 | [Columns](columns.md) | Enum columns, who sees and moves what, drop rules, WIP limits, summaries, folding and order |
 | [Cards](cards.md) | What a card shows: eyebrow, title, amount, badges, meta, avatars, accent and link |
-| [Actions](actions.md) | Card actions, the click action, and creating a card in a column |
-| [Moves and events](moves.md) | What a move does, `moveUsing()`, reordering, the `CardMoved` event and browser events |
-| [Configuration](configuration.md) | Search, filters, paging, polling, focus mode, styling, and the full fluent API |
+| [Actions](actions.md) | Card actions, the click action, bulk actions on a selection, creating a card in a column, and column actions |
+| [Swimlanes](swimlanes.md) | Rows by a second attribute: derived or defined lanes, what a drop sets, folding and paging |
+| [Moves and events](moves.md) | What a move does, undo, `moveUsing()`, reordering, the `CardMoved` event and browser events |
+| [Configuration](configuration.md) | Search, filters, paging, polling, realtime with Echo, focus mode, styling, and the full fluent API |
 
 ## At a glance
 

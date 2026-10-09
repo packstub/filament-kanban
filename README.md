@@ -17,12 +17,15 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 ## Features
 
 - **[Instant drag and drop](#instant-moves)**: a drop lands at once; if the server refuses, the card slides back with the reason.
-- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
-- **[Filament actions on cards](#card-actions)**: edit in a slide-over, delete or run your own actions, and [create in a column](#create-in-a-column).
+- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns, locked cards and WIP limits.
+- **[Filament actions on cards](#card-actions) and [columns](https://packstub.dev/docs/filament-kanban/actions#column-actions)**: edit in a slide-over, delete or run your own actions, [create in a column](#create-in-a-column), act on a whole column.
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
-- **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` event, browser events and polling for shared boards.
+- **[Search, filters and paging](#search-filters-and-paging)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
+- **[Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)**: rows by assignee, priority or any attribute, derived from the data or defined.
+- **[Bulk selection](https://packstub.dev/docs/filament-kanban/actions#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
+- **[Shared boards](https://packstub.dev/docs/filament-kanban/configuration#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, browser events, and an Undo on every move.
+- **[Keyboard, screen readers and phones](https://packstub.dev/docs/filament-kanban/configuration#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 
 ## Compatibility
@@ -169,7 +172,7 @@ Read more: [Columns](https://packstub.dev/docs/filament-kanban/columns#summaries
 
 ## Cards
 
-`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `badge($label, $color, $condition)`, `meta([...])` (empty parts dropped), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()` and `actions([...])`.
+`Card::make()` with `eyebrow()` (small monospaced line), `title()`, `aside()` (right-aligned: an amount, a date), `description()` (two muted lines), `badge($label, $color, $condition, icon: ...)`, `meta([...])` (empty parts dropped), `due($date)` (red once past, amber on the day), `progress($done, $total)` (a thin bar), `avatar($url, $name)` (initials without a picture), `accent($color)` (a coloured left edge), `url()`, `searchText()`, `actions([...])` and `locked()` (one card that stays put, refused by the server too).
 
 Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 
@@ -180,12 +183,13 @@ Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 ```php
 ->searchable(['reference', 'company', 'owner.name'])
 ->filters([
-    Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
+    Filter::make('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
+    Filter::make('mine')->label('Assigned to me')->toggle()->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
 ])
 ->perColumn(50)
 ```
 
-Typing filters the loaded cards at once, then the server brings the matching cards of every column. Each column loads its cards in pages as you scroll.
+Typing filters the loaded cards at once, then the server brings the matching cards of every column. A `Filter` is a select, a popover of checkboxes with `multiple()`, or an on/off chip with `toggle()`. The search and the active filters stay in the URL, so a filtered board can be bookmarked and shared. Each column loads its cards in pages as you scroll.
 
 Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration#search).
 

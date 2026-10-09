@@ -14,14 +14,20 @@ public function kanban(Board $board): Board
         ->reorderable('sort')                              // manual order, stored as integers
         ->searchable(['reference', 'company', 'owner.name'])
         ->filters([Filter::make('owner_id')->options(fn () => User::pluck('name', 'id')->all())])
+        ->persistInUrl(false)                              // leave the search and filters out of the URL
         ->summarize(fn (Builder $query) => Number::currency($query->sum('amount'), 'USD'))
         ->cardActions([EditAction::make()->schema([...]), DeleteAction::make()])
         ->cardAction('edit')                               // a click opens the edit modal
+        ->bulkActions([BulkAction::make('assign')->action(fn (Collection $records) => ...)])
+        ->swimlanes('owner_id', fn () => User::all()->map(fn ($u) => Lane::make($u->id)->label($u->name))->all())
         ->createAction(CreateAction::make()->schema([...]))
         ->moveUsing(fn (Deal $deal, string $to, string $from) => $deal->moveTo($to))
         ->perColumn(50)                                    // cards per column before "Load more"
         ->poll('30s')                                      // pick up other people's changes
+        ->broadcast()                                      // or at once with Laravel Echo (queued; or broadcastNow())
+        ->undo(10)                                         // "Undo" on the move notification, for 10 s
         ->focusMode(false)                                 // keep the panel's sidebar
+        ->density('compact')                               // tighter cards by default; a toggle lets users choose
         ->key('deals');                                    // where the browser keeps folded / hidden columns
 }
 ```
@@ -34,7 +40,7 @@ Without `searchable()` the search box is not shown.
 
 ## Filters
 
-A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer.
+A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer. The closure gets the value as a string, the option's key as the browser sends it (`"3"` for `User::pluck('name', 'id')`). Options given as a closure are resolved once per request: when the page draws the toolbar, and on a later refresh only once a value is set.
 
 ```php
 Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
@@ -46,6 +52,35 @@ Filter::make('due')->options(['overdue' => 'Overdue', 'week' => 'Due this week']
     }),
 ```
 
+### Several at once
+
+`multiple()` turns the select into a popover of checkboxes, with the number of chosen options on the button. The default narrows with `whereIn(<name>, <values>)`; a `query()` closure gets the chosen values as a list of strings, in the options' order. A value outside the options is dropped on its own, the others still apply.
+
+```php
+Filter::make('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
+
+Filter::make('tags')->multiple()->options(Tag::pluck('name', 'id')->all())
+    ->query(fn (Builder $query, array $values) => $query->whereHas('tags', fn ($q) => $q->whereKey($values))),
+```
+
+### On or off
+
+`toggle()` is a single chip with the filter's label and no options: "Overdue", "Assigned to me". There is no default query, so `query()` is required; it gets `true` when the chip is on and is not called at all when it is off.
+
+```php
+Filter::make('mine')->label('Assigned to me')->toggle()
+    ->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
+
+Filter::make('overdue')->toggle()
+    ->query(fn (Builder $query) => $query->where('due_at', '<', now())),
+```
+
+## Search and filters in the URL
+
+The search and the active filters are kept in the page's query string (`?search=acme&filters[owner_id][0]=3&filters[owner_id][1]=7&filters[mine]=1`), replaced in place as they change, so a filtered board can be bookmarked, shared and reloaded; an untouched board keeps a clean URL. The URL is trusted no more than the browser is: a filter the board does not define is ignored, a value outside the options is dropped in the browser and on the server. The page is drawn filtered from the start, with no second request; a board drawn later (lazy, deferred) reads the URL in the browser and refreshes once. `persistInUrl(false)` leaves the URL alone.
+
+The keys are the same for every board, so one URL-persisted board per page: with two boards on a page, or a page that uses `?search=` for something else, `persistInUrl(false)` on the others. A board only rewrites its own keys (`search` when it is searchable, `filters[...]` for the filters it defines) and leaves every other parameter alone.
+
 ## Paging
 
 Each column loads `perColumn()` cards (50 by default). The rest come in pages as the user scrolls to the bottom of the column; the "Load more" button stays for keyboards.
@@ -54,13 +89,62 @@ Each column loads `perColumn()` cards (50 by default). The rest come in pages as
 
 `poll('10s')` (or `'1m'`, or milliseconds) reloads the board every so often, so a shared board picks up other people's changes. It skips a beat while a card is being dragged or saved, while a menu is open, and while the tab is in the background. Columns keep the cards already loaded with "Load more" (up to ten pages), so a poll never scrolls anyone back to the top.
 
+What a load (the first render, a poll, a search, the refresh after an action) costs: one grouped count for the column counts, one more for the WIP totals when a column has a `limit()`, one query per column for its cards, plus your `summarize()` per column. The page loads this once, when the board is first drawn; a re-render of the page afterwards (an action's modal, a form submit) does not read the board again, since the browser keeps it.
+
+## Realtime with Echo
+
+With [Laravel Echo](https://laravel.com/docs/broadcasting) on the page, `broadcast()` replaces polling: after every change (a move, a card action, a create, a column action) the server broadcasts a `Packstub\Kanban\Events\BoardChanged` event on a private channel, and every other tab showing the board reloads at once. The tab that made the change recognises its own token in the event and ignores it; a burst of events is one request; a reload never interrupts a card in the air (a change that arrives mid-drag is loaded once the drop has settled).
+
+```php
+->broadcast()                                            // private channel "kanban.<key slug>", event ".kanban.changed"
+->broadcast(fn () => 'tenant.'.tenant()->id.'.kanban')   // your own channel name (a string or a closure)
+->broadcast('deals', 'deals.changed')                    // and your own event name
+->broadcastNow()                                         // sent during the request instead of through the queue
+```
+
+**The channel.** By default the channel is `kanban.` + a slug of the board's `key()`: with the default key, the page class, `App\Filament\Pages\Deals` gives `kanban.app-filament-pages-deals` (dots, colons and backslashes become `-`, so a `{board}` route parameter matches it and `project.1.5` and `project.15` stay apart); `->key('deals')` gives `kanban.deals`. Authorise it in `routes/channels.php` as any private channel, or realtime silently does nothing (Echo gets a 403):
+
+```php
+use App\Models\Deal;
+use App\Models\User;
+use Illuminate\Support\Facades\Broadcast;
+
+Broadcast::channel('kanban.{board}', fn (User $user) => $user->can('viewAny', Deal::class));
+```
+
+The default channel is shared by everyone who may see the page, tenants included: a change in one tenant's board reloads the other tenants' tabs (wasted requests, each through its own scoped query), and the event's payload (the record's id, the column names) reaches their browsers. On a multi-tenant app give the channel the tenant and authorise it as such:
+
+```php
+->broadcast(fn () => 'tenant.'.Filament::getTenant()->getKey().'.kanban')
+
+Broadcast::channel('tenant.{tenant}.kanban', fn (User $user, string $tenant) => $user->belongsToTenant($tenant));
+```
+
+**The queue.** `BoardChanged` implements `ShouldBroadcast`: it is queued, on your `QUEUE_CONNECTION`, once the transaction that made the change commits (`DB::afterCommit()`, so an action with `databaseTransaction()` never broadcasts a change that is rolled back), so a worker must run (`php artisan queue:work`; with `QUEUE_CONNECTION=database` and no worker nothing is ever sent). `BROADCAST_CONNECTION` picks the broadcaster (`reverb`, `pusher`, `ably`; `log` is handy while setting up). `broadcastNow()` skips the queue: the event goes out during the request, which is simpler and fine for a small team, but a broadcaster that is down then costs every move its timeout. Either way, a failing broadcast never fails the change: it is saved by then, the failure is reported to your exception handler, and the move answers "ok".
+
+The event is broadcast as `kanban.changed` (Echo's `.kanban.changed`, the leading dot added for you if you leave it out) and carries `board` (the key), `id`, `from`, `to` and `origin`, so your own listener (`Echo.private('kanban.deals').listen('.kanban.changed', ...)`) can use it too. A board ignores events for another board key on its channel, and the tabs in the background (or with a menu open) wait until they are shown (or it closes) to reload. Leaving the page stops this board's listener only; the channel stays for the rest of the page. Without Echo on the page the option does nothing; `poll()` keeps working, and both may be set. `CardMoved` is unchanged: it stays the event your server-side listeners use.
+
 ## Focus mode
 
 The board page hides the panel's sidebar so the columns get the whole width; a button in the toolbar brings it back (remembered per user). `focusMode(false)` keeps the sidebar.
 
+## Density
+
+A toggle in the toolbar switches between **Comfortable** and **Compact**: compact cards have smaller padding, one-line titles and a tighter column gap, for boards with hundreds of cards. `density('compact')` makes compact the default; a user's choice is remembered and wins over it.
+
+## Keyboard
+
+Every card is reachable with Tab: a card with a `url()` as a link, one the click action opens as a button. Inside a column, Arrow Up and Arrow Down move between the visible cards, Home and End jump to the first and the last. Enter opens the card (its url, or the click action); Shift+F10 or the menu key opens the card's menu, where the arrows walk the actions and the "Move to…" targets and Escape returns to the card. `/` focuses the search box.
+
+Columns are regions labelled with their name and count, and a visually hidden live region announces what the browser did: "Moved to Done", "Loaded 50 more cards", "12 cards match" after a search (a refused move is read from its notification). The counted ones take plural forms like any Laravel translation (`:count card|:count cards`, `{0}`/`[2,*]` ranges too), chosen for the app's locale. After a move or a refusal made from the keyboard, focus stays on the card (a mouse drop leaves it alone); when the card went to a column that is not on screen (a folded one, another tab on a narrow screen), that column's fold button or tab takes it. On narrow screens the column tabs follow the usual pattern: Arrow Left and Right, Home and End switch columns.
+
+## Narrow screens
+
+Below 64rem (a phone, a narrow tablet) the board shows one column at a time, at full width, picked from a tab bar above it (name, dot and count per column). A sideways swipe over the board goes to the next or previous column; the selected column is remembered with the other preferences. Dragging works inside the column; "Move to…" in the card menu moves a card to another column. The desktop layout above the breakpoint is unchanged.
+
 ## Remembered per user
 
-Folded and hidden columns and the sidebar toggle are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
+Folded and hidden columns, folded lanes, the sidebar toggle, the density and the selected column on narrow screens are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
 
 ## Styling
 
@@ -97,21 +181,44 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `sortBy(string, string = 'asc')` | key order | Default order in every column. |
 | `reorderable(string = 'sort')` | off | Manual order inside a column. |
 | `searchable(array)` | off | Attributes the server searches. |
-| `filters(array)` | `[]` | Toolbar selects. |
+| `filters(array)` | `[]` | `Filter`s in the toolbar. |
+| `persistInUrl(bool)` | `true` | Keep the search and filters in the query string. |
 | `summarize(?Closure)` | off | `fn (Builder $query, Column $column): ?string`. |
 | `cardActions(array)` | `[]` | Filament actions in each card's menu. |
 | `cardAction(?string)` | off | The card action a click runs. |
+| `bulkActions(array)` | `[]` | Actions on the selection bar; `BulkAction` gets `$records`. |
+| `selectable(bool\|Closure)` | with bulk actions | Let users select cards and move them together. |
+| `swimlanes(?string, array\|Closure\|class-string\|null)` | off | Rows by an attribute: `Lane`s, an enum, or derived from the data. |
 | `createAction(?Action)` | off | A "+" on each droppable column. |
-| `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from)`. |
+| `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from, ?string $lane)`. |
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
+| `undo(bool\|int)` | `5` | "Undo" on the notification after a move, for this many seconds; `false` for none. |
+| `broadcast(string\|Closure\|null, string, bool)` | off | Reload the other tabs through Echo: the private channel (default `kanban.<key slug>`), the event name (`.kanban.changed`), queued unless `now: true`. |
+| `broadcastNow(string\|Closure\|null, string)` | off | `broadcast()` during the request, without the queue. |
 | `focusMode(bool)` | `true` | Hide the sidebar on the board page. |
+| `density(string)` | `'comfortable'` | `'compact'` for tighter cards by default; the user's toggle wins. |
 | `key(string)` | the page class | Where the browser keeps a user's view. |
 
 ### Column
 
-`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`. See [Columns](columns.md).
+`make($name)`, `fromEnum($enum)`, `label()`, `color()`, `icon()`, `description()`, `visible()`, `hidden()`, `droppable()`, `draggable()`, `readOnly()`, `accepts()`, `limit()`, `creatable()`, `collapsed()`, `sortBy()`, `actions()`. See [Columns](columns.md) and [Column actions](actions.md#column-actions).
+
+### Lane
+
+`make($value)`, `fromEnum($enum)`, `label()`, `color()`, `collapsed()`. See [Swimlanes](swimlanes.md).
 
 ### Card
 
-`make()`, `eyebrow()`, `title()`, `aside()`, `badge()`, `meta()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`. See [Cards](cards.md).
+`make()`, `eyebrow()`, `title()`, `aside()`, `description()`, `badge()`, `meta()`, `due()`, `progress()`, `avatar()`, `accent()`, `url()`, `searchText()`, `actions()`, `locked()`, `draggable()`. See [Cards](cards.md).
+
+### Filter
+
+| Method | Default | |
+| --- | --- | --- |
+| `make(string $name)` | required | The attribute the default query narrows, and the key in the URL. |
+| `label(string\|Closure\|null)` | from the name | `owner_id` reads "Owner". |
+| `options(array\|Closure)` | `[]` | `[value => label]`; the only values the server accepts. |
+| `query(Closure)` | `where` / `whereIn` | `fn (Builder $query, string\|array\|true $value)`: a string, a list of strings for `multiple()`; required for `toggle()`. |
+| `multiple(bool = true)` | `false` | Several options at once; the query gets a list. |
+| `toggle(bool = true)` | `false` | An on/off chip without options; the query gets `true`. |
