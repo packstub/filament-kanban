@@ -311,6 +311,12 @@ export default function packstubKanban(config) {
             if (! card.url) event.preventDefault()
         },
 
+        // The server resolves the column again and takes the search and filters as it does on a refresh.
+        runColumnAction(name, column) {
+            this.menu = null
+            this.$wire.mountAction(name, { kanbanColumn: column.name, kanbanSearch: this.search, kanbanFilters: this.active, kanbanOrigin: ORIGIN })
+        },
+
         create(column) {
             this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name, kanbanOrigin: ORIGIN })
         },

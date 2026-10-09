@@ -23,4 +23,5 @@ return [
     'full' => ':column is full (limit :limit).',
     'moved_to' => 'Moved to :column',
     'undo' => 'Undo',
+    'column_menu' => 'Column actions',
 ];

@@ -27,7 +27,53 @@ it('offers no actions on a component without Filament\'s action system', functio
     $config = Livewire::test(PlainBoard::class)->instance()->getKanbanConfig();
 
     expect($config['cardActions'])->toBe([])
-        ->and($config['createAction'])->toBeNull();
+        ->and($config['createAction'])->toBeNull()
+        ->and($config['columns'][0]['actions'])->toBe([]);
+});
+
+it('offers each column its actions, named after the column, with the column injected', function () {
+    $config = Livewire::test(TaskBoard::class)->instance()->getKanbanConfig();
+
+    expect($config['columns'][0]['actions'][0])->toMatchArray(['name' => 'column:todo:archive', 'label' => 'Archive Todo'])
+        ->and($config['columns'][2]['actions'][0])->toMatchArray(['name' => 'column:done:archive', 'label' => 'Archive Done']);
+});
+
+it('runs a column action on the column\'s cards, as the search and filters leave them', function () {
+    $acme = project('Acme');
+    $alpha = task('Alpha', 'done', ['project_id' => $acme->id]);
+    $beta = task('Beta', 'done');
+    $gamma = task('Gamma', 'done', ['project_id' => $acme->id]);
+    $todo = task('Alpha too', 'todo');
+
+    Livewire::test(TaskBoard::class)
+        ->callAction('column:done:archive', arguments: ['kanbanColumn' => 'done', 'kanbanSearch' => 'alp', 'kanbanFilters' => ['project_id' => $acme->id]])
+        ->assertHasNoErrors()
+        ->assertDispatched('packstub-kanban-refresh');
+
+    expect($alpha->fresh()->status)->toBe('archived')
+        ->and($beta->fresh()->status)->toBe('done')
+        ->and($gamma->fresh()->status)->toBe('done')
+        ->and($todo->fresh()->status)->toBe('todo');
+
+    Livewire::test(TaskBoard::class)
+        ->callAction('column:done:archive', arguments: ['kanbanColumn' => 'done', 'kanbanFilters' => ['project_id' => 999]]); // not an offered value: ignored
+
+    expect(Task::where('status', 'done')->count())->toBe(0)
+        ->and($todo->fresh()->status)->toBe('todo');
+});
+
+it('refuses a column action on a hidden column, or named for another column', function () {
+    $done = task('Shipped', 'done');
+    TaskBoard::$visible = ['todo', 'doing'];
+
+    Livewire::test(TaskBoard::class)
+        ->assertActionHidden('column:done:archive', ['kanbanColumn' => 'done'])
+        ->assertActionHidden('column:todo:archive', ['kanbanColumn' => 'done'])
+        ->call('mountAction', 'column:done:archive', ['kanbanColumn' => 'done']) // what a crafted request would send
+        ->call('callMountedAction')
+        ->assertNotDispatched('packstub-kanban-refresh');
+
+    expect($done->fresh()->status)->toBe('done');
 });
 
 it('edits a card in a modal and tells the board to refresh', function () {

@@ -110,6 +110,26 @@
                     >
                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11"/></svg>
                     </button>
+                    <div class="pk-menu-wrap pk-col-menu-wrap" x-show="column.actions && column.actions.length">
+                        <button
+                            type="button"
+                            class="pk-icon-btn pk-col-menu"
+                            x-on:click.stop="menu = menu === 'column:' + column.name ? null : 'column:' + column.name"
+                            :aria-label="t.column_menu"
+                            :aria-expanded="menu === 'column:' + column.name"
+                            :title="t.column_menu"
+                        >
+                            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="15" cy="10" r="1.4"/></svg>
+                        </button>
+                        <div class="pk-menu pk-menu-end" x-show="menu === 'column:' + column.name" x-cloak x-transition.opacity.duration.100ms x-on:click.outside="menu = null" x-on:dblclick.stop>
+                            <template x-for="action in column.actions" :key="action.name">
+                                <button type="button" class="pk-menu-item" :class="action.color && 'pk-menu-item-' + action.color" x-on:click.stop="runColumnAction(action.name, column)">
+                                    <span class="pk-menu-icon" x-show="action.icon" x-html="action.icon"></span>
+                                    <span x-text="action.label"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
                     <button type="button" class="pk-icon-btn pk-fold" x-on:click="toggleFold(column.name)" :title="folded[column.name] ? t.expand : t.collapse">
                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m12 5-5 5 5 5"/></svg>
                     </button>

@@ -4,6 +4,7 @@ namespace Packstub\Kanban\Concerns;
 
 use Closure;
 use Filament\Actions\Action;
+use Packstub\Kanban\Actions\ColumnAction;
 
 /**
  * Registers the board's card and create actions with Filament's action system, on
@@ -46,6 +47,28 @@ trait KanbanActions
             $this->kanbanRefreshAfter($action);
 
             $this->cacheAction($action);
+        }
+
+        // Column actions are cached as `column:<column>:<name>`, so two columns may share a
+        // name; hidden columns' actions are registered too and hidden, like a card off the board.
+        foreach ($board->getAllColumns() as $column) {
+            foreach ($column->getActions() as $action) {
+                if ($action instanceof ColumnAction) {
+                    $action->board($board)->column($column);
+                }
+
+                if (static::kanbanProperty($action, 'label') === null) {
+                    $action->label($action->getLabel());
+                }
+
+                $action->name('column:'.$column->getName().':'.$action->getName());
+
+                static::kanbanChainHidden($action, fn () => ($action->getArguments()['kanbanColumn'] ?? null) !== $column->getName()
+                    || $board->getColumn($column->getName()) === null);
+                $this->kanbanRefreshAfter($action);
+
+                $this->cacheAction($action);
+            }
         }
     }
 

@@ -23,4 +23,5 @@ return [
     'full' => ':column este plină (limita :limit).',
     'moved_to' => 'Mutat în :column',
     'undo' => 'Anulează',
+    'column_menu' => 'Acțiuni coloană',
 ];

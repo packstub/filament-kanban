@@ -2,6 +2,7 @@
 
 namespace Packstub\Kanban\Concerns;
 
+use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
 use Livewire\Attributes\Renderless;
 use Packstub\Kanban\Board;
@@ -91,6 +92,21 @@ trait InteractsWithKanban
      */
     protected function kanbanMoved(string $id, string $to, array $card): void {}
 
+    /**
+     * What the browser needs to draw an action in a menu.
+     *
+     * @return array{name: string, label: mixed, icon: string|null, color: string|null}
+     */
+    protected function kanbanActionSummary(Action $action): array
+    {
+        return [
+            'name' => $action->getName(),
+            'label' => $action->getLabel(),
+            'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
+            'color' => is_string($color = $action->getColor()) ? $color : null,
+        ];
+    }
+
     /** @return array<string, mixed> */
     public function getKanbanConfig(): array
     {
@@ -101,7 +117,10 @@ trait InteractsWithKanban
 
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $board->getState(),
+            'columns' => array_map(fn (array $column) => [
+                ...$column,
+                'actions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getColumn($column['name'])->getActions() : []),
+            ], $board->getState()),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
@@ -110,12 +129,7 @@ trait InteractsWithKanban
             'poll' => $board->getPoll(),
             'undo' => $board->getUndo(),
             'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent()] : null,
-            'cardActions' => array_map(fn ($action) => [
-                'name' => $action->getName(),
-                'label' => $action->getLabel(),
-                'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
-                'color' => is_string($color = $action->getColor()) ? $color : null,
-            ], $actions ? $board->getCardActions() : []),
+            'cardActions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getCardActions() : []),
             'cardAction' => $board->getCardAction(),
             'createAction' => $actions && ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
             'i18n' => __('packstub-kanban::kanban'),

@@ -11,11 +11,14 @@ use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component;
+use Packstub\Kanban\Actions\ColumnAction;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
 use Packstub\Kanban\Concerns\InteractsWithKanban;
+use Packstub\Kanban\Filter;
 
 /** A plain Livewire component holding a board, the way an app page would. */
 class TaskBoard extends Component implements HasActions, HasSchemas
@@ -37,8 +40,14 @@ class TaskBoard extends Component implements HasActions, HasSchemas
             ->query(fn () => Task::query()->with('project'))
             ->sortBy('priority', 'desc')
             ->searchable(['title', 'project.name'])
+            ->filters([Filter::make('project_id')->options(fn () => Project::query()->pluck('name', 'id')->all())])
             ->columns(array_map(fn (string $name) => Column::make($name)
                 ->visible(static::$visible === null || in_array($name, static::$visible, true))
+                ->actions([
+                    ColumnAction::make('archive')
+                        ->label(fn (Column $column) => 'Archive '.$column->getLabel())
+                        ->action(fn (Builder $query) => $query->update(['status' => 'archived'])),
+                ])
                 ->when($name === 'doing', fn (Column $c) => $c->accepts(['todo'])->limit(static::$doingLimit))
                 ->when($name === 'done', fn (Column $c) => $c->accepts(['doing'])->droppable(fn () => static::$canShip)->creatable(false)),
                 ['todo', 'doing', 'done']))

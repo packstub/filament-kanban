@@ -69,6 +69,9 @@ class Board
     protected ?string $broadcastEvent = null;
 
     /** @var list<Column>|null */
+    protected ?array $allColumns = null;
+
+    /** @var list<Column>|null */
     protected ?array $resolvedColumns = null;
 
     /** @var array<string, Model|null> */
@@ -106,6 +109,7 @@ class Board
     public function columns(array|Closure|string $columns): static
     {
         $this->columns = is_string($columns) ? Column::fromEnum($columns) : $columns;
+        $this->allColumns = null;
         $this->resolvedColumns = null;
 
         return $this;
@@ -287,9 +291,15 @@ class Board
     public function getColumns(): array
     {
         return $this->resolvedColumns ??= array_values(array_filter(
-            $this->columns instanceof Closure ? app()->call($this->columns) : $this->columns,
+            $this->getAllColumns(),
             fn (Column $column) => $column->isVisible(),
         ));
+    }
+
+    /** @return list<Column> every column, hidden ones included: their actions are registered too, then hidden */
+    public function getAllColumns(): array
+    {
+        return $this->allColumns ??= array_values($this->columns instanceof Closure ? app()->call($this->columns) : $this->columns);
     }
 
     public function getColumn(string $name): ?Column
@@ -615,6 +625,17 @@ class Board
         $query = $this->baseQuery();
 
         return $query->where($this->qualifiedColumnAttribute($query), $columnName);
+    }
+
+    /**
+     * One column's cards as the user sees them: the search and filters applied. What a
+     * summary and a column action work on.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function getColumnQuery(string $columnName, string $search = '', array $filters = []): Builder
+    {
+        return $this->filteredQuery($search, $filters)->where($this->qualifiedColumnAttribute(), $columnName);
     }
 
     /** @param  array<string, mixed>  $filters */
