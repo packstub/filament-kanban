@@ -90,7 +90,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 
 | Method | Default | |
 | --- | --- | --- |
-| `query(Builder\|Closure)` | required | The records on the board. |
+| `query(Builder\|Closure)` | required; a resource page defaults to the resource's query | The records on the board. |
 | `columnAttribute(string)` | `'status'` | The attribute whose value is the column name. |
 | `columns(array\|Closure\|class-string)` | `[]` | `Column`s, or a backed enum's class. |
 | `card(Closure)` | the key as title | `fn (Model $record): Card`. |

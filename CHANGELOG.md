@@ -4,6 +4,9 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
+- Resource integration: a `KanbanResourcePage` without `query()` shows its resource's records (`getEloquentQuery()`, evaluated on every call, so tenancy and the resource's scopes apply). `Board::hasQuery()` tells whether one was set.
+- Table / Board switch: `Packstub\Kanban\Actions\KanbanAction::make()` in a list page's `getHeaderActions()` links to the resource's `kanban` (or `board`) page, `->page()` names another; the board page's default header action is a `TableAction` back to the list, shown when the resource has an `index` page (override `getHeaderActions()` to change it). Both take `->resource()` outside a resource page. Strings `board` and `table` in the four languages.
+- Navigation badge: `protected static bool $navigationBadgeFromBoard = true;` on a `KanbanResourcePage` or `KanbanPage` shows the number of cards the user may see, in one grouped query (`Board::getTotalCount()`). Off by default, so the navigation never touches the database.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.
 - Fixed: a horizontal swipe over a column scrolls the board; the card list no longer captures the gesture (it scrolls vertically only, without overscroll containment), so a short column also lets the page scroll past it.

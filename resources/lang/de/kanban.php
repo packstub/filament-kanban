@@ -21,4 +21,6 @@ return [
     'card_menu' => 'Kartenaktionen',
     'limit' => 'Limit: :limit Karten',
     'full' => ':column ist voll (Limit :limit).',
+    'board' => 'Board',
+    'table' => 'Tabelle',
 ];

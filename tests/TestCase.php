@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Schema;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Packstub\Kanban\KanbanServiceProvider;
+use Packstub\Kanban\Tests\Fixtures\AdminPanelProvider;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
 
 abstract class TestCase extends Orchestra
@@ -59,6 +60,7 @@ abstract class TestCase extends Orchestra
             // Real apps discover filament/* before livewire; keep that order.
             LivewireServiceProvider::class,
             KanbanServiceProvider::class,
+            AdminPanelProvider::class,
         ];
     }
 

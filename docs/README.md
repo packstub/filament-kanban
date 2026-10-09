@@ -21,7 +21,7 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 
 | Guide | What it covers |
 | --- | --- |
-| [Installation](installation.md) | Requirements, the first board page, and embedding a board in any Livewire component |
+| [Installation](installation.md) | Requirements, the first board page, a board under a resource (its query, the Table / Board switch, the navigation badge), and embedding a board in any Livewire component |
 | [Columns](columns.md) | Enum columns, who sees and moves what, drop rules, WIP limits, summaries, folding and order |
 | [Cards](cards.md) | What a card shows: eyebrow, title, amount, badges, meta, avatars, accent and link |
 | [Actions](actions.md) | Card actions, the click action, and creating a card in a column |

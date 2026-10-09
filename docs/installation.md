@@ -60,10 +60,12 @@ public static function getPages(): array
 {
     return [
         'index' => ListTasks::route('/'),
-        'board' => TaskBoard::route('/board'),
+        'kanban' => TaskBoard::route('/board'),
     ];
 }
 ```
+
+Under a resource the `query()` line is optional: see [A board under a resource](#a-board-under-a-resource).
 
 A standalone `KanbanPage` is discovered with your other pages. It is a normal Filament page, so `getHeaderActions()`, navigation and authorization work as usual.
 
@@ -76,6 +78,58 @@ A standalone `KanbanPage` is discovered with your other pages. It is a normal Fi
 ```
 
 A card that falls out of the query (someone else archived it, the user lost access) can no longer be moved or acted on: the server answers "This card is no longer on the board".
+
+## A board under a resource
+
+`KanbanResourcePage` knows its resource, so three things come for free.
+
+**The query.** Leave `query()` out and the board shows the resource's records: `getEloquentQuery()`, evaluated on every call, so the panel's tenant and the resource's own scopes (soft deletes, a `where` you added there) apply to the board as they do to the table. Set `query()` to narrow or eager-load; it replaces the default, so start it from the resource's query when you want to keep its scopes:
+
+```php
+public function kanban(Board $board): Board
+{
+    return $board
+        ->query(fn () => TaskResource::getEloquentQuery()->with('assignee'))
+        ->columns(TaskStatus::class)
+        ->card(fn (Task $task) => Card::make()->title($task->title));
+}
+```
+
+**The Table / Board switch.** Register the board page and put `KanbanAction` in the list page's header: a "Board" button on the table, and the board page shows a "Table" button back to the list.
+
+```php
+// TaskResource
+public static function getPages(): array
+{
+    return [
+        'index' => Pages\ListTasks::route('/'),
+        'kanban' => Pages\TaskBoard::route('/board'),
+    ];
+}
+
+// Pages\ListTasks
+use Packstub\Kanban\Actions\KanbanAction;
+
+protected function getHeaderActions(): array
+{
+    return [KanbanAction::make(), CreateAction::make()];
+}
+```
+
+`KanbanAction` links to the resource's `kanban` page, or its `board` page when there is no `kanban`; `->page('pipeline')` names another, and the button is hidden when the resource has no such page. It is a Filament action, so `->label()`, `->icon()`, `->color()` and `->outlined()` work as usual.
+
+The "Table" button is the board page's default `getHeaderActions()`, shown when the resource has an `index` page. Override the method to add to it (`[TableAction::make(), CreateAction::make()]`) or to drop it (`[]`). Outside a resource page, both actions take the resource explicitly: `KanbanAction::make()->resource(TaskResource::class)`.
+
+**The navigation badge.** Opt in to a badge with the number of cards the user may see, counted in one grouped query over the visible columns:
+
+```php
+class TaskBoard extends KanbanResourcePage
+{
+    protected static bool $navigationBadgeFromBoard = true;
+}
+```
+
+A standalone `KanbanPage` takes the same property. Off (the default), building the navigation never touches the database; override `getNavigationBadge()` for anything else.
 
 ## A board in any Livewire component
 

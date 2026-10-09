@@ -69,7 +69,7 @@ class DealBoard extends KanbanResourcePage
 }
 ```
 
-Register it in the resource's `getPages()`: `'board' => DealBoard::route('/board')`.
+Register it in the resource's `getPages()`: `'kanban' => DealBoard::route('/board')`. Under a resource the `query()` is optional (the board shows the resource's records, tenant and scopes included), `KanbanAction::make()` in the list page's header gives a Table / Board switch, and `$navigationBadgeFromBoard = true` puts the number of cards in the navigation.
 
 Read more: [Installation](https://packstub.dev/docs/filament-kanban/installation), including a board inside any Livewire component.
 

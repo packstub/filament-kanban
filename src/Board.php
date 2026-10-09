@@ -323,6 +323,22 @@ class Board
         return $this->poll;
     }
 
+    /** Whether query() was set; a resource page fills it from the resource otherwise. */
+    public function hasQuery(): bool
+    {
+        return $this->query !== null;
+    }
+
+    /**
+     * How many cards the user may see, over every visible column: one grouped query.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function getTotalCount(string $search = '', array $filters = []): int
+    {
+        return array_sum($this->counts($search, $filters));
+    }
+
     /** @return class-string<Model> */
     public function getModel(): string
     {
