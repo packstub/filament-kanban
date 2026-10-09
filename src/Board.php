@@ -73,6 +73,8 @@ class Board
 
     protected ?int $poll = null;
 
+    protected string $density = 'comfortable';
+
     protected ?int $undo = 5;
 
     protected string|Closure|null $broadcastChannel = null;
@@ -334,6 +336,20 @@ class Board
     }
 
     /**
+     * How tight the cards are drawn by default: 'comfortable' or 'compact' (smaller
+     * padding, one-line titles). A toggle in the toolbar lets each user override it.
+     */
+    public function density(string $density): static
+    {
+        in_array($density, ['comfortable', 'compact'], true)
+            ?: throw new \InvalidArgumentException("Unknown density [{$density}]: use 'comfortable' or 'compact'.");
+
+        $this->density = $density;
+
+        return $this;
+    }
+
+    /**
      * An "Undo" on the notification after a move, for this many seconds (5 by default;
      * false for none). Undoing is a move back through every rule and moveUsing(), so
      * nothing is restored behind their back.
@@ -531,6 +547,11 @@ class Board
     public function getPoll(): ?int
     {
         return $this->poll;
+    }
+
+    public function getDensity(): string
+    {
+        return $this->density;
     }
 
     /** Seconds the "Undo" stays offered after a move; null when off. */

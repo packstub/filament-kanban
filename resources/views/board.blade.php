@@ -27,8 +27,11 @@
     x-on:packstub-kanban-refresh.window="refresh(true)"
     x-on:packstub-kanban-undo.window="undo($event.detail)"
     class="pk"
-    :class="{ 'pk-is-dragging': dragging }"
+    :class="{ 'pk-is-dragging': dragging, 'pk-compact': density === 'compact', 'pk-narrow': narrow }"
 >
+    {{-- Read by screen readers only: moves, refusals, pages loaded, search results (see announce()). --}}
+    <div class="pk-live" x-ref="live" aria-live="polite" aria-atomic="true"></div>
+
     <div class="pk-toolbar" x-show="! selected.length">
         @if ($config['focus'])
             <button type="button" class="pk-icon-btn pk-sidebar-btn" x-on:click="toggleSidebar()" :title="sidebar ? t.hide_sidebar : t.show_sidebar" :aria-pressed="sidebar">
@@ -57,6 +60,11 @@
         </template>
 
         <div class="pk-spacer"></div>
+
+        {{-- A fixed label with the pressed state: "Compact, pressed" while compact, "Compact, not pressed" otherwise; the tooltip names what a click gives. --}}
+        <button type="button" class="pk-icon-btn pk-density-btn" x-on:click="toggleDensity()" :title="tr(density === 'compact' ? 'comfortable' : 'compact')" :aria-label="tr('compact')" :aria-pressed="density === 'compact'">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 5.25h12.5M3.75 8.5h12.5M3.75 11.75h12.5M3.75 15h12.5"/></svg>
+        </button>
 
         <div class="pk-menu-wrap">
             <button type="button" class="pk-btn" x-on:click.stop="menu = menu === 'columns' ? null : 'columns'" :aria-expanded="menu === 'columns'">
@@ -110,22 +118,47 @@
         </button>
     </div>
 
-    <div class="pk-board" x-ref="board" :class="{ 'pk-board-lanes': lanes }" :style="gridStyle()">
+
+    {{-- Narrow screens only (see .pk-narrow): one column at a time, picked here or by a sideways swipe. --}}
+    <div class="pk-tabs" role="tablist" :aria-label="tr('columns')" x-ref="tabs" x-on:keydown="tabKeys($event)">
+        <template x-for="column in columns" :key="column.name">
+            <button
+                type="button"
+                role="tab"
+                class="pk-tab"
+                :data-column="column.name"
+                x-show="! hidden.includes(column.name)"
+                :class="{ 'pk-tab-on': column.name === currentTab() }"
+                :aria-selected="column.name === currentTab()"
+                :tabindex="column.name === currentTab() ? 0 : -1"
+                x-on:click="selectTab(column.name)"
+            >
+                <span class="pk-dot" :style="dot(column.color)"></span>
+                <span x-text="column.label"></span>
+                <span class="pk-tab-count" x-text="column.limit !== null ? column.total + '/' + column.limit : column.count"></span>
+            </button>
+        </template>
+    </div>
+
+    <div class="pk-board" x-ref="board" :class="{ 'pk-board-lanes': lanes }" :style="gridStyle()" x-on:touchstart.passive="swipeStart($event)" x-on:touchend.passive="swipeEnd($event)">
         <template x-for="column in columns" :key="column.name">
             <section
                 class="pk-col"
+                role="region"
                 x-show="! hidden.includes(column.name)"
                 :data-column="column.name"
+                :aria-label="columnLabel(column)"
                 :class="{
-                    'pk-col-folded': folded[column.name],
+                    'pk-col-folded': folded[column.name] && ! narrow,
+                    'pk-col-tab': narrow && column.name === currentTab(),
                     'pk-col-target': dragging && dragging.from !== column.name && canDrop(dragging.from, column.name),
                     'pk-col-blocked': dragging && dragging.from !== column.name && ! canDrop(dragging.from, column.name),
                     'pk-col-locked': ! column.draggable,
                     'pk-col-full': isFull(column),
                 }"
-                x-on:click="if (folded[column.name] && ! $event.target.closest('.pk-fold')) toggleFold(column.name)"
+                x-on:click="if (folded[column.name] && ! narrow && ! $event.target.closest('.pk-fold')) toggleFold(column.name)"
             >
-                <header class="pk-col-head" x-on:dblclick="toggleFold(column.name)" :style="headStyle(column)" :title="column.description || null">
+                <header class="pk-col-head" x-on:dblclick="if (! narrow) toggleFold(column.name)" :style="headStyle(column)" :title="column.description || null">
                     <span class="pk-dot" :style="dot(column.color)"></span>
                     <span class="pk-col-icon" x-show="column.icon" x-html="column.icon"></span>
                     <div class="pk-col-title">
@@ -174,10 +207,11 @@
 
                 <template x-for="lane in rows" :key="lane.value ?? '_'">
                 <div class="pk-cell" :class="{ 'pk-cell-folded': lanes && foldedLanes[lane.value] }" :style="cellStyle(column, lane)">
-                <ol class="pk-cards" :data-column="column.name" :data-lane="lane.value" x-init="bindSortable($el, column, lane)">
+                <ol class="pk-cards" role="list" :data-column="column.name" :data-lane="lane.value" x-init="bindSortable($el, column, lane)" x-on:keydown="keys($event, column)" x-on:contextmenu="contextMenu($event)">
                     <template x-for="card in cardsIn(column, lane)" :key="card.id">
                         <li
                             class="pk-card"
+                            role="listitem"
                             :data-id="card.id"
                             x-show="matches(card)"
                             :class="{ 'pk-card-pending': card._pending, 'pk-card-flash': card._flash, 'pk-card-accent': card.accent, 'pk-card-selected': isSelected(card.id), 'pk-card-locked': card.draggable === false }"
@@ -186,7 +220,8 @@
                             <button type="button" class="pk-card-check" x-show="hasSelection" x-on:click.stop="toggleSelect(card, column, lane, $event)" :aria-pressed="isSelected(card.id)" :aria-label="t.select_card" :title="t.select_card">
                                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 10.5 3.5 3.5L15 7"/></svg>
                             </button>
-                            <a class="pk-card-link" :href="card.url || null" x-on:click="open($event, card, column, lane)" draggable="false">
+                            {{-- Without a url the anchor is still focusable (arrows, Shift+F10); with a click action it is a button, Enter and Space run it (see keys()). --}}
+                            <a class="pk-card-link" :href="card.url || null" :role="! card.url && clickable(card) ? 'button' : null" :tabindex="card.url ? null : 0" x-on:click="open($event, card, column, lane)" draggable="false">
                                 <span class="pk-lock" x-show="card.draggable === false" role="img" :title="t.locked" :aria-label="t.locked">
                                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.75" y="8.75" width="10.5" height="8.5" rx="1.5"/><path d="M7 8.75V6.5a3 3 0 0 1 6 0v2.25"/></svg>
                                 </span>
@@ -225,7 +260,7 @@
                                 type="button"
                                 class="pk-card-menu"
                                 x-show="hasMenu(card, column)"
-                                x-on:click.stop="menu = menu === 'card:' + card.id ? null : 'card:' + card.id"
+                                x-on:click.stop="openMenu(card)"
                                 :aria-label="t.card_menu"
                                 :aria-expanded="menu === 'card:' + card.id"
                                 :title="t.card_menu"
@@ -256,7 +291,7 @@
                     <span x-text="dragging && canDrop(dragging.from, column.name, dragging.lane, lane.value) ? t.drop_here : (search ? t.no_match : t.empty)"></span>
                 </div>
 
-                <button type="button" class="pk-more" :data-column="column.name" :data-lane="lane.value" x-show="loadedIn(column, lane) < countIn(column, lane) && ! folded[column.name] && ! search" x-init="observeMore($el, column, lane)" x-on:click="more(column, lane)" :disabled="loading[cellKey(column, lane)]">
+                <button type="button" class="pk-more" :data-column="column.name" :data-lane="lane.value" x-show="loadedIn(column, lane) < countIn(column, lane) && (! folded[column.name] || narrow) && ! search" x-init="observeMore($el, column, lane)" x-on:click="more(column, lane)" :disabled="loading[cellKey(column, lane)]">
                     <span x-text="t.more"></span>
                     <span x-text="'(' + (countIn(column, lane) - loadedIn(column, lane)) + ')'"></span>
                 </button>

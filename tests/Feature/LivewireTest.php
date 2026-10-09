@@ -26,7 +26,10 @@ it('renders the board with its state as JSON for the browser', function () {
         ->assertSeeHtml('packstub/filament-kanban/components/kanban.js')
         ->assertSee('Write docs')
         ->assertSeeHtml('wire:ignore')
-        ->assertSeeHtml('<style>.pk { visibility: hidden; animation: pk-reveal 0s 1.5s forwards; }'); // revealed after 1.5 s should the stylesheet never arrive
+        ->assertSeeHtml('<style>.pk { visibility: hidden; animation: pk-reveal 0s 1.5s forwards; }') // revealed after 1.5 s should the stylesheet never arrive
+        ->assertSeeHtml('aria-live="polite"')
+        ->assertSeeHtml('role="list"')
+        ->assertSeeHtml('role="tablist"');
 });
 
 it('sends the state with a board first drawn on a later request, and lets a redrawn board ask for it', function () {

@@ -19,6 +19,7 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 - **[Swimlanes](swimlanes.md)**: rows by assignee, priority or any attribute, derived from the data or defined, folded and remembered.
 - **[Bulk selection](actions.md#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
 - **[Shared boards](configuration.md#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, and an [Undo](moves.md#undo) on every move.
+- **[Keyboard, screen readers and phones](configuration.md#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
 
 ## Guides
 

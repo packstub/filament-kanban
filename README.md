@@ -25,6 +25,7 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 - **[Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)**: rows by assignee, priority or any attribute, derived from the data or defined.
 - **[Bulk selection](https://packstub.dev/docs/filament-kanban/actions#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
 - **[Shared boards](https://packstub.dev/docs/filament-kanban/configuration#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, browser events, and an Undo on every move.
+- **[Keyboard, screen readers and phones](https://packstub.dev/docs/filament-kanban/configuration#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 
 ## Compatibility

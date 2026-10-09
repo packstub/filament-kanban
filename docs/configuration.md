@@ -26,6 +26,7 @@ public function kanban(Board $board): Board
         ->broadcast()                                      // or at once with Laravel Echo (queued; or broadcastNow())
         ->undo(10)                                         // "Undo" on the move notification, for 10 s
         ->focusMode(false)                                 // keep the panel's sidebar
+        ->density('compact')                               // tighter cards by default; a toggle lets users choose
         ->key('deals');                                    // where the browser keeps folded / hidden columns
 }
 ```
@@ -97,9 +98,23 @@ The event is broadcast as `kanban.changed` (Echo's `.kanban.changed`, the leadin
 
 The board page hides the panel's sidebar so the columns get the whole width; a button in the toolbar brings it back (remembered per user). `focusMode(false)` keeps the sidebar.
 
+## Density
+
+A toggle in the toolbar switches between **Comfortable** and **Compact**: compact cards have smaller padding, one-line titles and a tighter column gap, for boards with hundreds of cards. `density('compact')` makes compact the default; a user's choice is remembered and wins over it.
+
+## Keyboard
+
+Every card is reachable with Tab: a card with a `url()` as a link, one the click action opens as a button. Inside a column, Arrow Up and Arrow Down move between the visible cards, Home and End jump to the first and the last. Enter opens the card (its url, or the click action); Shift+F10 or the menu key opens the card's menu, where the arrows walk the actions and the "Move to…" targets and Escape returns to the card. `/` focuses the search box.
+
+Columns are regions labelled with their name and count, and a visually hidden live region announces what the browser did: "Moved to Done", "Loaded 50 more cards", "12 cards match" after a search (a refused move is read from its notification). The counted ones take plural forms like any Laravel translation (`:count card|:count cards`, `{0}`/`[2,*]` ranges too), chosen for the app's locale. After a move or a refusal made from the keyboard, focus stays on the card (a mouse drop leaves it alone); when the card went to a column that is not on screen (a folded one, another tab on a narrow screen), that column's fold button or tab takes it. On narrow screens the column tabs follow the usual pattern: Arrow Left and Right, Home and End switch columns.
+
+## Narrow screens
+
+Below 64rem (a phone, a narrow tablet) the board shows one column at a time, at full width, picked from a tab bar above it (name, dot and count per column). A sideways swipe over the board goes to the next or previous column; the selected column is remembered with the other preferences. Dragging works inside the column; "Move to…" in the card menu moves a card to another column. The desktop layout above the breakpoint is unchanged.
+
 ## Remembered per user
 
-Folded and hidden columns, folded lanes and the sidebar toggle are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
+Folded and hidden columns, folded lanes, the sidebar toggle, the density and the selected column on narrow screens are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
 
 ## Styling
 
@@ -151,6 +166,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `broadcast(string\|Closure\|null, string, bool)` | off | Reload the other tabs through Echo: the private channel (default `kanban.<key slug>`), the event name (`.kanban.changed`), queued unless `now: true`. |
 | `broadcastNow(string\|Closure\|null, string)` | off | `broadcast()` during the request, without the queue. |
 | `focusMode(bool)` | `true` | Hide the sidebar on the board page. |
+| `density(string)` | `'comfortable'` | `'compact'` for tighter cards by default; the user's toggle wins. |
 | `key(string)` | the page class | Where the browser keeps a user's view. |
 
 ### Column

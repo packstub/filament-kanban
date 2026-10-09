@@ -273,6 +273,7 @@ trait InteractsWithKanban
             'maxSelection' => Board::MAX_SELECTION,
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
+            'density' => $board->getDensity(),
             'undo' => $board->getUndo(),
             'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent(), 'board' => $board->getKey()] : null,
             'cardActions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getCardActions() : []),
@@ -280,6 +281,7 @@ trait InteractsWithKanban
             'bulkActions' => array_map($this->kanbanActionSummary(...), $actions ? $board->getBulkActions() : []),
             'createAction' => $actions && ($create = $board->getCreateAction()) ? ['name' => $create->getName(), 'label' => $create->getLabel()] : null,
             'i18n' => __('packstub-kanban::kanban'),
+            'locale' => app()->getLocale(),
         ];
     }
 
