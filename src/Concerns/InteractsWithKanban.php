@@ -18,7 +18,18 @@ trait InteractsWithKanban
 
     protected ?Board $kanbanBoard = null;
 
+    /** @var array<string, mixed>|null */
+    protected ?array $kanbanConfig = null;
+
+    /** True on every request after the one that first rendered the component. */
+    protected bool $kanbanHydrated = false;
+
     abstract public function kanban(Board $board): Board;
+
+    public function hydrateInteractsWithKanban(): void
+    {
+        $this->kanbanHydrated = true;
+    }
 
     public function getKanban(): Board
     {
@@ -89,8 +100,21 @@ trait InteractsWithKanban
      */
     protected function kanbanMoved(string $id, string $to, array $card): void {}
 
-    /** @return array<string, mixed> */
+    /**
+     * What the view hands to the browser, once per request. The board's state (cards,
+     * counts, totals, summaries) is loaded on the first render only: the board is
+     * `wire:ignore`d, so a later re-render (an action's modal, a form submit) would
+     * throw it away; those renders get the config without columns.
+     *
+     * @return array<string, mixed>
+     */
     public function getKanbanConfig(): array
+    {
+        return $this->kanbanConfig ??= $this->buildKanbanConfig();
+    }
+
+    /** @return array<string, mixed> */
+    protected function buildKanbanConfig(): array
     {
         $board = $this->getKanban();
 
@@ -99,7 +123,7 @@ trait InteractsWithKanban
 
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $board->getState(),
+            'columns' => $this->kanbanHydrated ? [] : $board->getState(),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),

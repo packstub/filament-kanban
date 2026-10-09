@@ -3,6 +3,8 @@
 use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
@@ -177,6 +179,83 @@ it('stores the order of a reorderable column', function () {
 
     expect(array_column($board->getCards('todo'), 'title'))->toBe(['B', 'C', 'A'])
         ->and($other->fresh()->sort)->toBeNull(); // ids from other columns are ignored
+});
+
+it('counts the WIP totals of every limited column in one grouped query', function () {
+    task('A', 'todo');
+    task('B', 'doing');
+    task('C', 'doing');
+
+    $limited = board()->columns([Column::make('todo')->limit(5), Column::make('doing')->limit(2), Column::make('done')]);
+
+    DB::enableQueryLog();
+    $state = $limited->getState();
+    $grouped = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_contains($sql, 'count(*)'));
+
+    expect(array_column($state, 'total'))->toBe([1, 2, null])
+        ->and($grouped)->toHaveCount(2) // the filtered counts and the unfiltered totals
+        ->and($grouped->every(fn (string $sql) => str_contains($sql, 'group by')))->toBeTrue();
+
+    DB::flushQueryLog();
+    board()->getState();
+
+    expect(collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_contains($sql, 'count(*)')))->toHaveCount(1); // no limit, no totals
+});
+
+it('renumbers the whole column: the loaded cards first, the others after them in their current order', function () {
+    $a = task('A', 'todo', ['sort' => 1]);
+    $b = task('B', 'todo', ['sort' => 2]);
+    $c = task('C', 'todo', ['sort' => 3]);
+    $d = task('D', 'todo', ['sort' => 4]);
+    $n = task('N', 'todo'); // no position yet
+
+    $board = board()->reorderable('sort')->perColumn(2);
+
+    DB::enableQueryLog();
+    $board->move((string) $b->id, 'todo', [(string) $b->id, (string) $a->id]);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect(array_column($board->getCards('todo', limit: 10), 'title'))->toBe(['B', 'A', 'C', 'D', 'N'])
+        ->and(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['B' => 1, 'A' => 2, 'C' => 3, 'D' => 4, 'N' => 5])
+        ->and($updates)->toHaveCount(3); // only the positions that change (B, A, N); C and D already fit
+});
+
+it('sorts a card without a position last, never first', function () {
+    task('A', 'todo', ['sort' => 1]);
+    task('N', 'todo');
+    task('B', 'todo', ['sort' => 2]);
+
+    expect(array_column(board()->reorderable('sort')->getCards('todo'), 'title'))->toBe(['A', 'B', 'N']);
+});
+
+it('saves a move and its order in one transaction: a refusal or a failure rolls both back', function () {
+    Event::fake([CardMoved::class]);
+    $task = task('Build');
+    $other = task('Review', 'doing', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')->moveUsing(function (Task $record, string $to) {
+        $record->update(['status' => $to]);
+
+        throw new MoveRejected('Changed my mind.');
+    });
+
+    expect(fn () => $board->move((string) $task->id, 'doing', [(string) $task->id, (string) $other->id]))->toThrow(MoveRejected::class, 'Changed my mind.')
+        ->and($task->fresh()->status)->toBe('todo')
+        ->and($other->fresh()->sort)->toBe(1);
+    Event::assertNotDispatched(CardMoved::class);
+
+    // The move itself goes through, then storing the order fails: the move is undone too.
+    $broken = board()->reorderable('no_such_column');
+
+    expect(fn () => $broken->move((string) $task->id, 'doing', [(string) $task->id]))->toThrow(QueryException::class)
+        ->and($task->fresh()->status)->toBe('todo');
+    Event::assertNotDispatched(CardMoved::class);
+
+    board()->reorderable('sort')->move((string) $task->id, 'doing', [(string) $task->id, (string) $other->id]);
+
+    expect($task->fresh())->toMatchArray(['status' => 'doing', 'sort' => 1])
+        ->and($other->fresh()->sort)->toBe(2);
+    Event::assertDispatched(CardMoved::class, 1);
 });
 
 it('evaluates column rules as closures', function () {

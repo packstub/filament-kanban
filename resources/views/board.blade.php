@@ -7,13 +7,16 @@
 {{--
     The browser owns the board: cards are drawn from JSON by Alpine and moved
     optimistically; Livewire only answers renderless calls. wire:ignore keeps a
-    page re-render (a header action's modal, say) from resetting it.
+    page re-render (a header action's modal, say) from resetting it, and such a
+    render gets the config without the board's state (see getKanbanConfig()).
 
     The stylesheet arrives with x-load-css, after the first paint: without this
     the markup shows unstyled for a frame (an icon the width of the page).
-    kanban.css undoes the rule with a more specific selector once it applies.
+    kanban.css undoes the rule with a more specific selector once it applies;
+    should it never arrive, the script below reveals the board after 1.5 s.
 --}}
-<style>.pk { visibility: hidden; }</style>
+<style>.pk { visibility: hidden; } .pk.pk-ready { visibility: visible; }</style>
+<script>setTimeout(() => document.querySelectorAll('.pk').forEach((el) => el.classList.add('pk-ready')), 1500)</script>
 <div
     wire:ignore
     x-load

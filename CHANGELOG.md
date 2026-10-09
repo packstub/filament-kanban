@@ -4,6 +4,11 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
+- Fixed: the board's state (cards, counts, WIP totals, summaries) is loaded on the page's first render only. A Livewire re-render of the page (a card action's modal, a form submit, a header action) no longer runs every query again to throw the result away behind `wire:ignore`; `getKanbanConfig()` is computed once per request.
+- Fixed: the WIP totals come from one grouped count over the board's query, run only when a column has a `limit()`, instead of a count per limited column.
+- Fixed: a move and the column's new order are saved in one transaction; a `MoveRejected` or a failure while storing the order rolls both back, and `CardMoved` is dispatched after the commit.
+- Fixed: reordering renumbers the whole column: the loaded cards get 1..n and every other card follows them in its current order, so cards beyond the loaded pages no longer collide with them; a card without a position sorts last instead of first. Only the positions that change are written.
+- Fixed: should the board's stylesheet never load, the board shows after 1.5 s instead of staying hidden.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.
 - Fixed: a horizontal swipe over a column scrolls the board; the card list no longer captures the gesture (it scrolls vertically only, without overscroll containment), so a short column also lets the page scroll past it.
