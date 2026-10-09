@@ -11,7 +11,9 @@ use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
+use Illuminate\Database\Eloquent\Collection;
 use Livewire\Component;
+use Packstub\Kanban\Actions\BulkAction;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
@@ -49,6 +51,10 @@ class TaskBoard extends Component implements HasActions, HasSchemas
                 Action::make('bump')->action(fn (Task $record) => $record->increment('priority')),
             ])
             ->cardAction('edit')
+            ->bulkActions([
+                BulkAction::make('bumpAll')->action(fn (Collection $records) => $records->each->increment('priority')),
+                BulkAction::make('bumpQuery')->action(fn (BulkAction $action) => $action->getSelectedRecordsQuery()->increment('priority')),
+            ])
             ->createAction(CreateAction::make()->schema([TextInput::make('title')->required()]))
             ->card(fn (Task $task) => Card::make()->title($task->title)->meta([$task->project?->name])->url('/tasks/'.$task->id));
     }

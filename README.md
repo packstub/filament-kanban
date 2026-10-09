@@ -22,6 +22,8 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 - **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
 - **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
+- **[Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)**: rows by assignee, priority or any attribute, derived from the data or defined.
+- **[Bulk selection](https://packstub.dev/docs/filament-kanban/actions#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
 - **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` event, browser events and polling for shared boards.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 

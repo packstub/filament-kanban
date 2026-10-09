@@ -4,15 +4,18 @@ namespace Packstub\Kanban\Concerns;
 
 use Closure;
 use Filament\Actions\Action;
+use Packstub\Kanban\Actions\BulkAction;
+use Packstub\Kanban\Board;
 
 /**
  * Registers the board's card and create actions with Filament's action system, on
  * components that have one (panel pages do). Filament calls cacheKanbanActions()
  * while booting, for every trait whose name ends in "Actions".
  *
- * The browser mounts them with the card (`kanbanRecord`) or the column
- * (`kanbanColumn`) as an argument; everything else is resolved here again, through
- * the board's query and column rules, whatever the browser sent.
+ * The browser mounts them with the card (`kanbanRecord`), the selection
+ * (`kanbanRecords`) or the column (`kanbanColumn`) as an argument; everything else
+ * is resolved here again, through the board's query and column rules, whatever the
+ * browser sent.
  */
 trait KanbanActions
 {
@@ -24,6 +27,25 @@ trait KanbanActions
             $action->record(fn () => $board->findRecord($action->getArguments()['kanbanRecord'] ?? null));
 
             static::kanbanChainHidden($action, fn () => $board->findRecord($action->getArguments()['kanbanRecord'] ?? null) === null);
+            $this->kanbanRefreshAfter($action);
+
+            $this->cacheAction($action);
+        }
+
+        foreach ($board->getBulkActions() as $action) {
+            $ids = fn () => (array) ($action->getArguments()['kanbanRecords'] ?? []);
+
+            if ($action instanceof BulkAction) {
+                // $records and the query select the same rows: the cleaned, capped ids.
+                $action->records(fn () => $board->findRecords($ids()));
+                $action->recordsQuery(fn () => $board->baseQuery()->whereKey(Board::selectionIds($ids())));
+            }
+
+            if ($action->getModel(withDefault: false) === null) {
+                $action->model($board->getModel());
+            }
+
+            static::kanbanChainHidden($action, fn () => ! $board->hasRecords($ids()));
             $this->kanbanRefreshAfter($action);
 
             $this->cacheAction($action);
