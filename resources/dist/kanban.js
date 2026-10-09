@@ -38,13 +38,15 @@ export default function packstubKanban(config) {
         refreshTimer: null,
         refreshSeq: 0,
         pending: 0,
+        drawn: config.columns !== null, // false until a board drawn again has its columns
+        retries: 0,
 
         init() {
             this.restore()
 
-            // Rendered on a later request of the page (the server sends no state then):
-            // ask for it once instead of drawing an empty board.
-            if (config.columns === null) {
+            // Drawn again on a later request (the server sends no state then): ask for it
+            // instead of drawing an empty board.
+            if (! this.drawn) {
                 this.refresh()
             }
 
@@ -311,14 +313,24 @@ export default function packstubKanban(config) {
             const seq = ++this.refreshSeq
             const loaded = background ? Object.fromEntries(this.columns.map((c) => [c.name, c.cards.length])) : {}
 
-            this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
-                if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
+            this.$wire.kanbanRefresh(this.search, this.active, loaded).catch(() => null).then((result) => {
+                if (seq !== this.refreshSeq) {
                     return
                 }
 
-                if (! this.columns.length) {
+                // Without its columns the board would stay empty: try again, a little later each time.
+                if (! result && ! this.drawn && this.retries < 5) {
+                    this.refreshTimer = setTimeout(() => this.refresh(), 1000 * 2 ** this.retries++)
+                }
+
+                if (! result || (background && (this.dragging || this.pending))) {
+                    return
+                }
+
+                if (! this.drawn) {
                     this.columns = result.columns
-                    this.restore() // collapsed() columns and the saved folded/hidden ones, now that there are columns
+                    this.drawn = true
+                    this.restore(false) // collapsed() columns and the saved folded/hidden ones, now that there are columns
                     return
                 }
 
@@ -389,7 +401,7 @@ export default function packstubKanban(config) {
             this.persist()
         },
 
-        restore() {
+        restore(sidebar = true) {
             for (const column of this.columns) {
                 this.folded[column.name] = !! column.collapsed
             }
@@ -400,14 +412,20 @@ export default function packstubKanban(config) {
                     const names = this.columns.map((c) => c.name)
                     Object.assign(this.folded, Object.fromEntries(Object.entries(saved.folded || {}).filter(([n]) => names.includes(n))))
                     this.hidden = (saved.hidden || []).filter((n) => names.includes(n))
-                    this.sidebar = !! saved.sidebar
+                    if (sidebar) this.sidebar = !! saved.sidebar
                 }
             } catch (e) {}
         },
 
         persist() {
             try {
-                localStorage.setItem(config.key, JSON.stringify({ folded: this.folded, hidden: this.hidden, sidebar: this.sidebar }))
+                // Before the columns arrive, folded and hidden are empty: keep the saved ones.
+                const saved = this.drawn ? null : JSON.parse(localStorage.getItem(config.key) || 'null')
+                localStorage.setItem(config.key, JSON.stringify({
+                    folded: saved ? saved.folded || {} : this.folded,
+                    hidden: saved ? saved.hidden || [] : this.hidden,
+                    sidebar: this.sidebar,
+                }))
             } catch (e) {}
         },
 

@@ -3,6 +3,7 @@
 namespace Packstub\Kanban\Concerns;
 
 use Filament\Actions\Contracts\HasActions;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
@@ -21,15 +22,11 @@ trait InteractsWithKanban
     /** @var array<string, mixed>|null */
     protected ?array $kanbanConfig = null;
 
-    /** True on every request after the one that first rendered the component. */
-    protected bool $kanbanHydrated = false;
+    /** Whether the board has been sent with its state: later renders send `columns: null`. */
+    #[Locked]
+    public bool $kanbanDrawn = false;
 
     abstract public function kanban(Board $board): Board;
-
-    public function hydrateInteractsWithKanban(): void
-    {
-        $this->kanbanHydrated = true;
-    }
 
     public function getKanban(): Board
     {
@@ -102,16 +99,22 @@ trait InteractsWithKanban
 
     /**
      * What the view hands to the browser, once per request. The board's state (cards,
-     * counts, totals, summaries) is loaded on the first render only: the board is
+     * counts, totals, summaries) is loaded the first time the board is drawn, on
+     * whichever request that is (a lazy or deferred board included): the board is
      * `wire:ignore`d, so a later re-render (an action's modal, a form submit) would
-     * throw it away; those renders get `columns: null`. A board first drawn on such
-     * a request (deferred, toggled, in a modal) loads its state with one refresh.
+     * throw it away; those renders get `columns: null`. A board removed and drawn
+     * again (toggled off and on) loads its state with one refresh.
      *
      * @return array<string, mixed>
      */
     public function getKanbanConfig(): array
     {
-        return $this->kanbanConfig ??= $this->buildKanbanConfig();
+        if ($this->kanbanConfig === null) {
+            $this->kanbanConfig = $this->buildKanbanConfig();
+            $this->kanbanDrawn = true;
+        }
+
+        return $this->kanbanConfig;
     }
 
     /** @return array<string, mixed> */
@@ -124,7 +127,7 @@ trait InteractsWithKanban
 
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $this->kanbanHydrated ? null : $board->getState(),
+            'columns' => $this->kanbanDrawn ? null : $board->getState(),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),

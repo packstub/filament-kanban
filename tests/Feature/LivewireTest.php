@@ -26,7 +26,7 @@ it('renders the board with its state as JSON for the browser', function () {
         ->assertSeeHtml('<style>.pk { visibility: hidden; animation: pk-reveal 0s 1.5s forwards; }'); // revealed after 1.5 s should the stylesheet never arrive
 });
 
-it('lets a board first drawn on a later request ask for its state', function () {
+it('sends the state with a board first drawn on a later request, and lets a redrawn board ask for it', function () {
     task('Write docs');
 
     $component = new class extends TaskBoard
@@ -38,6 +38,11 @@ it('lets a board first drawn on a later request ask for its state', function () 
             $this->ready = true;
         }
 
+        public function unload(): void
+        {
+            $this->ready = false;
+        }
+
         public function render(): string
         {
             return '<div>@if ($ready) @include(\'packstub-kanban::board\') @else <p>loading</p> @endif <x-filament-actions::modals /></div>';
@@ -46,9 +51,12 @@ it('lets a board first drawn on a later request ask for its state', function () 
 
     Livewire::test($component::class)
         ->assertSee('loading')
-        ->call('load')
+        ->call('load') // deferred (wire:init, #[Lazy]): drawn with its state, no second request
         ->assertSeeHtml('x-data="packstubKanban(')
-        ->assertSeeHtml('\u0022columns\u0022:null') // the browser calls kanbanRefresh() once and takes the columns whole
+        ->assertSee('Write docs')
+        ->call('unload')
+        ->call('load') // drawn again: the browser calls kanbanRefresh() once and takes the columns whole
+        ->assertSeeHtml('\u0022columns\u0022:null')
         ->call('kanbanRefresh')
         ->assertReturned(fn ($result) => $result['columns'][0]['cards'][0]['title'] === 'Write docs');
 });
