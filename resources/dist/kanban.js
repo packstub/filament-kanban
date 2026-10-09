@@ -36,6 +36,7 @@ export default function packstubKanban(config) {
         menu: null,
         sidebar: false,
         density: config.density || 'comfortable',
+        densityChosen: false,
         narrow: false, // below 64rem: one column at a time, picked from a tab bar
         tab: null,
         refreshTimer: null,
@@ -195,9 +196,14 @@ export default function packstubKanban(config) {
             const order = config.reorderable ? target.cards.map((c) => c.id) : null
 
             // A keyboard user keeps their place: the card is drawn again (in another
-            // column, or back where it was), so focus follows it by id.
-            const focused = document.activeElement?.closest?.('.pk-card')?.dataset.id === id
-            if (focused) this.refocus(id)
+            // column, or back where it was), so focus follows it by id. Only when focus
+            // was in the card when the move started and has not gone elsewhere since (the
+            // menu closing leaves it on <body>): a late refusal never pulls focus from a
+            // search box or a modal.
+            const inCard = () => document.activeElement?.closest?.('.pk-card')?.dataset.id === id
+            const focused = inCard()
+            const keepFocus = () => focused && (inCard() || document.activeElement === document.body || ! document.activeElement)
+            if (focused) this.refocus(id, to)
 
             const undo = (message) => {
                 const now = target.cards.findIndex((c) => c.id === id)
@@ -206,14 +212,15 @@ export default function packstubKanban(config) {
                 shift(-1)
                 card._pending = false
                 this.notify(message, 'danger')
-                this.announce(message)
-                if (focused) this.refocus(id)
+                // Filament's notifications are a live region already; the board's own only steps in without them.
+                if (! window.FilamentNotification) this.announce(message)
+                if (keepFocus()) this.refocus(id, from)
             }
 
             this.$wire.kanbanMove(id, to, order, this.search, this.active)
                 .then((result) => {
                     if (! result?.ok) {
-                        return undo(result?.message || this.t.failed)
+                        return undo(result?.message || this.tr('failed'))
                     }
 
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
@@ -223,7 +230,7 @@ export default function packstubKanban(config) {
 
                     if (from !== to) {
                         this.$dispatch('kanban-card-moved', { id, from, to, card: result.card })
-                        this.announce(this.t.moved_to.replace(':column', target.label))
+                        this.announce(this.tr('moved_to', { column: target.label }))
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)
@@ -235,7 +242,7 @@ export default function packstubKanban(config) {
                         }, 900)
                     }
                 })
-                .catch(() => undo(this.t.offline))
+                .catch(() => undo(this.tr('offline')))
                 .finally(() => this.pending--)
         },
 
@@ -270,8 +277,13 @@ export default function packstubKanban(config) {
             this.$wire.mountAction(name, { kanbanRecord: card.id })
         },
 
+        // Whether a click on the card runs the click action (a card with a url is a link anyway).
+        clickable(card) {
+            return !! config.cardAction && this.actionsFor(card).some((a) => a.name === config.cardAction)
+        },
+
         open(event, card) {
-            if (config.cardAction && this.actionsFor(card).some((a) => a.name === config.cardAction)) {
+            if (this.clickable(card)) {
                 // A modified click still opens the url in a new tab.
                 if (card.url && (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)) return
                 event.preventDefault()
@@ -347,8 +359,20 @@ export default function packstubKanban(config) {
             }
         },
 
-        refocus(id) {
-            this.$nextTick(() => this.$root.querySelector(`.pk-card[data-id="${CSS.escape(id)}"] > .pk-card-link`)?.focus())
+        // Focus the card again once Alpine has drawn it; when its column is not on screen
+        // (another tab on a narrow screen, a folded column) the column's tab or fold
+        // button takes the focus instead, so it never drops to <body>.
+        refocus(id, column) {
+            this.$nextTick(() => {
+                const link = this.$root.querySelector(`.pk-card[data-id="${CSS.escape(id)}"] > .pk-card-link`)
+                if (link?.offsetParent) return link.focus()
+
+                const name = CSS.escape(column ?? '')
+                const fallback = this.narrow
+                    ? this.$refs.tabs?.querySelector(`.pk-tab[data-column="${name}"]`)
+                    : this.$refs.board?.querySelector(`.pk-col[data-column="${name}"] .pk-fold`)
+                fallback?.focus()
+            })
         },
 
         // The live region reads a text once; cleared first so the same text is read again.
@@ -359,8 +383,70 @@ export default function packstubKanban(config) {
             setTimeout(() => { live.textContent = text }, 50)
         },
 
+        // A string with its placeholders filled; a missing key (a published translation
+        // of a locale the package does not ship) gives the key, never an error.
+        tr(key, replacements = {}) {
+            let text = typeof this.t?.[key] === 'string' ? this.t[key] : key
+            for (const [name, value] of Object.entries(replacements)) {
+                text = text.replace(':' + name, String(value))
+            }
+
+            return text
+        },
+
         columnLabel(column) {
-            return this.t.column_label.replace(':label', column.label).replace(':count', column.count)
+            return this.tr('column_label', { label: column.label, count: column.count })
+        },
+
+        /* ------------------------------------------------------------ narrow screens: one column at a time */
+
+        // The selected tab, falling back to the first visible column when it is hidden or gone.
+        currentTab() {
+            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
+
+            return visible.some((c) => c.name === this.tab) ? this.tab : (visible[0]?.name ?? null)
+        },
+
+        selectTab(name) {
+            this.tab = name
+            this.menu = null
+            this.persist()
+            this.$nextTick(() => this.$refs.tabs?.querySelector('.pk-tab-on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
+        },
+
+        // Roving tabindex on the tab bar: the arrows, Home and End select and focus the next tab.
+        tabKeys(event) {
+            const tabs = [...event.currentTarget.querySelectorAll('.pk-tab')].filter((t) => t.offsetParent)
+            const at = tabs.indexOf(event.target)
+            if (at < 0) return
+
+            const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key]
+            if (to === undefined || ! tabs[to]) return
+
+            event.preventDefault()
+            this.selectTab(tabs[to].dataset.column)
+            tabs[to].focus()
+        },
+
+        // A one-finger sideways swipe over the board goes to the next or previous column;
+        // never while a card is in the air, never a pinch.
+        swipeStart(event) {
+            const touch = event.touches?.[0]
+            this.swipe = touch && event.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : null
+        },
+
+        swipeEnd(event) {
+            const start = this.swipe
+            const touch = event.changedTouches?.[0]
+            this.swipe = null
+            if (! start || ! touch || event.changedTouches.length > 1 || event.touches?.length || ! this.narrow || this.dragging) return
+
+            const dx = touch.clientX - start.x
+            if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(touch.clientY - start.y)) return
+
+            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
+            const next = visible[visible.findIndex((c) => c.name === this.currentTab()) + (dx < 0 ? 1 : -1)]
+            if (next) this.selectTab(next.name)
         },
 
         /* ------------------------------------------------------------ search, filters, paging */
@@ -416,7 +502,8 @@ export default function packstubKanban(config) {
                 }
 
                 if (! background && this.search.trim()) {
-                    this.announce(this.t.matches_count.replace(':count', result.columns.reduce((sum, c) => sum + (c.count || 0), 0)))
+                    const shown = result.columns.filter((c) => ! this.hidden.includes(c.name))
+                    this.announce(this.tr('matches_count', { count: shown.reduce((sum, c) => sum + (c.count || 0), 0) }))
                 }
             })
         },
@@ -445,7 +532,7 @@ export default function packstubKanban(config) {
                     const known = new Set(column.cards.map((c) => c.id))
                     const fresh = (cards || []).filter((c) => ! known.has(c.id))
                     column.cards.push(...fresh)
-                    this.announce(this.t.loaded_more.replace(':count', fresh.length))
+                    this.announce(this.tr('loaded_more', { count: fresh.length }))
                 })
                 .finally(() => {
                     this.loading[column.name] = false
@@ -478,44 +565,12 @@ export default function packstubKanban(config) {
             this.persist()
         },
 
+        // The user's choice is saved and wins over the board's default; until they choose,
+        // nothing is saved, so a later density() default still applies.
         toggleDensity() {
             this.density = this.density === 'compact' ? 'comfortable' : 'compact'
+            this.densityChosen = true
             this.persist()
-        },
-
-        /* ------------------------------------------------------------ narrow screens: one column at a time */
-
-        // The selected tab, falling back to the first visible column when it is hidden or gone.
-        currentTab() {
-            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
-
-            return visible.some((c) => c.name === this.tab) ? this.tab : (visible[0]?.name ?? null)
-        },
-
-        selectTab(name) {
-            this.tab = name
-            this.persist()
-            this.$nextTick(() => this.$refs.tabs?.querySelector('.pk-tab-on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
-        },
-
-        // A sideways swipe over the board goes to the next or previous column; never while a card is in the air.
-        swipeStart(event) {
-            const touch = event.touches?.[0]
-            this.swipe = touch ? { x: touch.clientX, y: touch.clientY } : null
-        },
-
-        swipeEnd(event) {
-            const start = this.swipe
-            const touch = event.changedTouches?.[0]
-            this.swipe = null
-            if (! start || ! touch || ! this.narrow || this.dragging) return
-
-            const dx = touch.clientX - start.x
-            if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(touch.clientY - start.y)) return
-
-            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
-            const next = visible[visible.findIndex((c) => c.name === this.currentTab()) + (dx < 0 ? 1 : -1)]
-            if (next) this.selectTab(next.name)
         },
 
         restore() {
@@ -530,7 +585,10 @@ export default function packstubKanban(config) {
                     Object.assign(this.folded, Object.fromEntries(Object.entries(saved.folded || {}).filter(([n]) => names.includes(n))))
                     this.hidden = (saved.hidden || []).filter((n) => names.includes(n))
                     this.sidebar = !! saved.sidebar
-                    if (saved.density === 'compact' || saved.density === 'comfortable') this.density = saved.density
+                    if (saved.density === 'compact' || saved.density === 'comfortable') {
+                        this.density = saved.density
+                        this.densityChosen = true
+                    }
                     if (names.includes(saved.tab)) this.tab = saved.tab
                 }
             } catch (e) {}
@@ -538,7 +596,13 @@ export default function packstubKanban(config) {
 
         persist() {
             try {
-                localStorage.setItem(config.key, JSON.stringify({ folded: this.folded, hidden: this.hidden, sidebar: this.sidebar, density: this.density, tab: this.tab }))
+                localStorage.setItem(config.key, JSON.stringify({
+                    folded: this.folded,
+                    hidden: this.hidden,
+                    sidebar: this.sidebar,
+                    density: this.densityChosen ? this.density : undefined,
+                    tab: this.tab ?? undefined,
+                }))
             } catch (e) {}
         },
 

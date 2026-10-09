@@ -67,7 +67,7 @@ A toggle in the toolbar switches between **Comfortable** and **Compact**: compac
 
 Every card is reachable with Tab, a card with a `url()` as a link, one without as a button. Inside a column, Arrow Up and Arrow Down move between the visible cards, Home and End jump to the first and the last. Enter opens the card (its url, or the click action); Shift+F10 or the menu key opens the card's menu, where the arrows walk the actions and the "Move to…" targets and Escape returns to the card. `/` focuses the search box.
 
-Columns are regions labelled with their name and count, and a visually hidden live region announces what the browser did: "Moved to Done", the reason a move was refused, "Loaded 50 more cards", "12 cards match" after a search. After a move or a refusal, focus stays on the card.
+Columns are regions labelled with their name and count, and a visually hidden live region announces what the browser did: "Moved to Done", "Loaded 50 more cards", "12 cards match" after a search (a refused move is read from its notification). After a move or a refusal, focus stays on the card; when the card went to a column that is not on screen (a folded one, another tab on a narrow screen), that column's fold button or tab takes it. On narrow screens the column tabs follow the usual pattern: Arrow Left and Right, Home and End switch columns.
 
 ## Narrow screens
 

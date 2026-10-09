@@ -57,7 +57,8 @@
 
         <div class="pk-spacer"></div>
 
-        <button type="button" class="pk-icon-btn pk-density-btn" x-on:click="toggleDensity()" :title="density === 'compact' ? t.comfortable : t.compact" :aria-label="density === 'compact' ? t.comfortable : t.compact" :aria-pressed="density === 'compact'">
+        {{-- A fixed label with the pressed state: "Compact, pressed" while compact, "Compact, not pressed" otherwise. --}}
+        <button type="button" class="pk-icon-btn pk-density-btn" x-on:click="toggleDensity()" :title="tr('compact')" :aria-label="tr('compact')" :aria-pressed="density === 'compact'">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.75 5.25h12.5M3.75 8.5h12.5M3.75 11.75h12.5M3.75 15h12.5"/></svg>
         </button>
 
@@ -81,12 +82,13 @@
     </div>
 
     {{-- Narrow screens only (see .pk-narrow): one column at a time, picked here or by a sideways swipe. --}}
-    <div class="pk-tabs" role="tablist" x-ref="tabs">
+    <div class="pk-tabs" role="tablist" :aria-label="tr('columns')" x-ref="tabs" x-on:keydown="tabKeys($event)">
         <template x-for="column in columns" :key="column.name">
             <button
                 type="button"
                 role="tab"
                 class="pk-tab"
+                :data-column="column.name"
                 x-show="! hidden.includes(column.name)"
                 :class="{ 'pk-tab-on': column.name === currentTab() }"
                 :aria-selected="column.name === currentTab()"
@@ -118,7 +120,7 @@
                 }"
                 x-on:click="if (folded[column.name] && ! narrow && ! $event.target.closest('.pk-fold')) toggleFold(column.name)"
             >
-                <header class="pk-col-head" x-on:dblclick="toggleFold(column.name)">
+                <header class="pk-col-head" x-on:dblclick="if (! narrow) toggleFold(column.name)">
                     <span class="pk-dot" :style="dot(column.color)"></span>
                     <div class="pk-col-title">
                         <h3 x-text="column.label"></h3>
@@ -154,8 +156,8 @@
                             :class="{ 'pk-card-pending': card._pending, 'pk-card-flash': card._flash, 'pk-card-accent': card.accent }"
                             :style="card.accent ? '--pk-card-accent:' + tone(card.accent) : ''"
                         >
-                            {{-- Without a url the anchor is a button: focusable, Enter and Space open it (see keys()). --}}
-                            <a class="pk-card-link" :href="card.url || null" :role="card.url ? null : 'button'" :tabindex="card.url ? null : 0" x-on:click="open($event, card)" draggable="false">
+                            {{-- Without a url the anchor is still focusable (arrows, Shift+F10); with a click action it is a button, Enter and Space run it (see keys()). --}}
+                            <a class="pk-card-link" :href="card.url || null" :role="! card.url && clickable(card) ? 'button' : null" :tabindex="card.url ? null : 0" x-on:click="open($event, card)" draggable="false">
                                 <div class="pk-card-top" x-show="card.eyebrow || card.aside">
                                     <span class="pk-eyebrow" x-text="card.eyebrow"></span>
                                     <span class="pk-aside" x-text="card.aside"></span>
@@ -211,7 +213,7 @@
                     <span x-text="dragging && canDrop(dragging.from, column.name) ? t.drop_here : (search ? t.no_match : t.empty)"></span>
                 </div>
 
-                <button type="button" class="pk-more" :data-column="column.name" x-show="column.cards.length < column.count && ! folded[column.name] && ! search" x-init="observeMore($el, column)" x-on:click="more(column)" :disabled="loading[column.name]">
+                <button type="button" class="pk-more" :data-column="column.name" x-show="column.cards.length < column.count && (! folded[column.name] || narrow) && ! search" x-init="observeMore($el, column)" x-on:click="more(column)" :disabled="loading[column.name]">
                     <span x-text="t.more"></span>
                     <span x-text="'(' + (column.count - column.cards.length) + ')'"></span>
                 </button>
