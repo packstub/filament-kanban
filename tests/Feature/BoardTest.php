@@ -2,6 +2,7 @@
 
 use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
+use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\HtmlString;
@@ -293,17 +294,49 @@ it('shapes a description, progress, a due date and badge icons, and leaves them 
         'progress' => ['value' => 0.6, 'label' => '3/5'],
         'due' => ['date' => '2026-10-07', 'label' => 'Oct 7'],
     ])
-        ->and($card->toArray()['badges'][0]['icon'])->toContain('<svg')
+        ->and($card->toArray()['badges'][0]['icon'])->toBe('heroicon-m-phone')
         ->and($card->toArray()['badges'][1])->not->toHaveKey('icon')
+        ->and(Card::make()->badge('x', icon: Heroicon::Phone)->toArray()['badges'][0]['icon'])->toBe('heroicon-m-phone')
         ->and(Card::make()->progress(0.4)->toArray()['progress'])->toBe(['value' => 0.4, 'label' => '40%'])
+        ->and(Card::make()->progress(50)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '100%']) // one number is a fraction, clamped
         ->and(Card::make()->progress(7, 5)->toArray()['progress'])->toBe(['value' => 1.0, 'label' => '7/5'])
-        ->and(Card::make()->progress(1, 0)->toArray()['progress']['value'])->toBe(0.0)
+        ->and(Card::make()->progress(2.5, 5)->toArray()['progress'])->toBe(['value' => 0.5, 'label' => '2.5/5'])
+        ->and(Card::make()->title('B')->progress(3, null)->toArray())->not->toHaveKey('progress') // nothing to count: no bar
+        ->and(Card::make()->title('B')->progress(1, 0)->toArray())->not->toHaveKey('progress')
         ->and(Card::make()->due(new DateTimeImmutable('2026-10-07'), 'Tomorrow')->toArray()['due']['label'])->toBe('Tomorrow')
+        ->and(Card::make()->due(new DateTimeImmutable('2026-10-07 23:30', new DateTimeZone('UTC')))->toArray()['due']['date'])->toBe('2026-10-07') // the day of the date given, in its own zone
         ->and(Card::make()->title('B')->progress(null)->due(null)->toArray())->not->toHaveKeys(['description', 'progress', 'due', 'draggable']);
 
     config(['app.date_format' => 'd.m.Y']);
 
     expect(Card::make()->due(new DateTimeImmutable('2026-10-07'))->toArray()['due']['label'])->toBe('07.10.2026');
+});
+
+it('sends each badge icon once per request, by name, instead of inside every card', function () {
+    task('A', 'todo', ['priority' => 9]);
+    task('B', 'todo', ['priority' => 9]);
+
+    $board = board()->card(fn (Task $task) => Card::make()->title($task->title)->badge('call', 'sky', icon: 'heroicon-m-phone')->badge('mail', icon: 'heroicon-m-envelope'));
+
+    expect($board->getIcons())->toBe([])
+        ->and($board->getCards('todo')[1]['badges'][0]['icon'])->toBe('heroicon-m-phone')
+        ->and(array_keys($board->getIcons()))->toBe(['heroicon-m-phone', 'heroicon-m-envelope'])
+        ->and($board->getIcons()['heroicon-m-phone'])->toContain('<svg')
+        ->and(json_encode($board->getCards('todo')))->not->toContain('<svg');
+});
+
+it('evaluates a label closure once per column', function () {
+    $runs = 0;
+    $column = Column::make('todo')->label(function () use (&$runs) {
+        $runs++;
+
+        return new HtmlString('<em>To do</em>');
+    });
+
+    $state = board()->columns([$column])->getState();
+
+    expect($state[0])->toMatchArray(['label' => '<em>To do</em>', 'labelHtml' => true])
+        ->and($runs)->toBe(1);
 });
 
 it('locks a card: said in the JSON, refused by the server for a move and a reorder alike', function () {

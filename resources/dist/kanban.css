@@ -285,7 +285,12 @@ div.pk { visibility: visible; }
 
 .pk-card:hover { border-color: var(--pk-card-hover); }
 .pk-col-locked .pk-card, .pk-card-locked { cursor: default; }
-.pk .pk-lock { display: inline-block; width: 0.75rem; height: 0.75rem; margin-inline-end: 0.25rem; vertical-align: -0.1em; color: var(--pk-muted); }
+
+/* The lock sits in the card's top-right corner, whatever lines the card has; the menu button moves over. */
+.pk-lock { position: absolute; top: 0.5rem; right: 0.55rem; display: grid; color: var(--pk-muted); }
+.pk .pk-lock svg { width: 0.75rem; height: 0.75rem; }
+.pk-card-locked .pk-card-top { padding-inline-end: 2.5rem; }
+.pk-card-locked .pk-card-menu { right: 1.6rem; }
 
 .pk-card-accent::before {
     content: "";

@@ -23,6 +23,7 @@ const TEXT = new WeakMap()
 export default function packstubKanban(config) {
     return {
         columns: config.columns,
+        icons: config.icons || {}, // badge icons by name, grown from every answer that carries cards
         filters: config.filters,
         cardActions: config.cardActions || [],
         createAction: config.createAction,
@@ -198,6 +199,8 @@ export default function packstubKanban(config) {
                         return undo(result?.message || this.t.failed)
                     }
 
+                    Object.assign(this.icons, result.icons || {})
+
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
                         const column = this.findColumn(name)
                         if (column) column.summary = summary
@@ -317,6 +320,8 @@ export default function packstubKanban(config) {
                     return
                 }
 
+                Object.assign(this.icons, result.icons || {})
+
                 for (const fresh of result.columns) {
                     const column = this.findColumn(fresh.name)
                     if (column) {
@@ -349,9 +354,10 @@ export default function packstubKanban(config) {
             this.loading[column.name] = true
 
             this.$wire.kanbanMore(column.name, column.cards.length, this.search, this.active)
-                .then((cards) => {
+                .then((result) => {
+                    Object.assign(this.icons, result?.icons || {})
                     const known = new Set(column.cards.map((c) => c.id))
-                    column.cards.push(...(cards || []).filter((c) => ! known.has(c.id)))
+                    column.cards.push(...(result?.cards || []).filter((c) => ! known.has(c.id)))
                 })
                 .finally(() => {
                     this.loading[column.name] = false

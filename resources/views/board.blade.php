@@ -125,21 +125,19 @@
                             :style="card.accent ? '--pk-card-accent:' + tone(card.accent) : ''"
                         >
                             <a class="pk-card-link" :href="card.url || null" x-on:click="open($event, card)" draggable="false">
+                                <span class="pk-lock" x-show="card.draggable === false" role="img" :title="t.locked" :aria-label="t.locked">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.75" y="8.75" width="10.5" height="8.5" rx="1.5"/><path d="M7 8.75V6.5a3 3 0 0 1 6 0v2.25"/></svg>
+                                </span>
                                 <div class="pk-card-top" x-show="card.eyebrow || card.aside">
                                     <span class="pk-eyebrow" x-text="card.eyebrow"></span>
                                     <span class="pk-aside" x-text="card.aside"></span>
                                 </div>
-                                <div class="pk-title" x-show="card.title">
-                                    <template x-if="card.draggable === false">
-                                        <svg class="pk-lock" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.75" y="8.75" width="10.5" height="8.5" rx="1.5"/><path d="M7 8.75V6.5a3 3 0 0 1 6 0v2.25"/></svg>
-                                    </template>
-                                    <span x-text="card.title"></span>
-                                </div>
+                                <div class="pk-title" x-show="card.title" x-text="card.title"></div>
                                 <div class="pk-description" x-show="card.description" x-text="card.description"></div>
                                 <div class="pk-card-foot" x-show="(card.badges && card.badges.length) || (card.meta && card.meta.length) || (card.avatars && card.avatars.length) || card.due || card.progress">
                                     <template x-for="badge in (card.badges || [])" :key="badge.label">
                                         <span class="pk-badge" :style="'--pk-badge:' + tone(badge.color || 'gray')">
-                                            <template x-if="badge.icon"><span class="pk-badge-icon" x-html="badge.icon"></span></template>
+                                            <template x-if="badge.icon && icons[badge.icon]"><span class="pk-badge-icon" x-html="icons[badge.icon]"></span></template>
                                             <span x-text="badge.label"></span>
                                         </span>
                                     </template>

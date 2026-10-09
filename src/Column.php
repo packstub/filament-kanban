@@ -204,7 +204,7 @@ class Column
 
     public function getLabel(): string
     {
-        $label = $this->evaluate($this->label);
+        $label = $this->resolveLabel();
 
         if ($label instanceof Htmlable) {
             return $label->toHtml();
@@ -216,7 +216,17 @@ class Column
     /** Whether getLabel() is HTML (an Htmlable label) rather than text for the browser to escape. */
     public function hasHtmlLabel(): bool
     {
-        return $this->evaluate($this->label) instanceof Htmlable;
+        return $this->resolveLabel() instanceof Htmlable;
+    }
+
+    /** A label closure runs once per column, whichever of getLabel() and hasHtmlLabel() asks first. */
+    protected function resolveLabel(): string|Htmlable|null
+    {
+        if ($this->label instanceof Closure) {
+            $this->label = $this->evaluate($this->label);
+        }
+
+        return $this->label;
     }
 
     /** The icon rendered to SVG, for the browser. */

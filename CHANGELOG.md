@@ -4,13 +4,13 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
-- Per-card rules: `Card::locked()` (or `draggable(false)`) keeps one card where it is. The browser skips the drag and the "Move to" menu and shows a lock before the title; the server reads the card again on every move and refuses with "This card cannot be moved.", for a reorder inside the column too (#2).
+- Per-card rules: `Card::locked()` (or `draggable(false)`) keeps one card where it is. The browser skips the drag and the "Move to" menu and shows a lock in the card's corner, with the refusal message as its tooltip; the server reads the card again on every move and refuses with "This card cannot be moved.", for a reorder inside the column too (#2).
 - `Card::description()`: a muted line under the title, clamped to two lines (#3).
-- `Card::progress($done, $total)` or `progress($fraction)`: a thin bar at the bottom of the card, `3/5` on hover, green when full (#3).
-- `Card::due($date, $label = null)`: a date with a calendar glyph, red once past and amber on the day, decided in the viewer's time zone; the label defaults to `config('app.date_format')` or `M j` (#3).
-- `Card::badge(..., icon: 'heroicon-m-phone')`: a Heroicon before a badge's label (#3).
+- `Card::progress($done, $total)` or `progress($fraction)`: a thin bar at the bottom of the card, `3/5` on hover, green when full; a null or zero total draws no bar (#3).
+- `Card::due($date, $label = null)`: a date with a calendar glyph, amber on its day and red from the next, compared per calendar day in the browser (the day is taken in the timezone of the date given); the label defaults to `config('app.date_format')` or `M j` (#3).
+- `Card::badge(..., icon: 'heroicon-m-phone')`: a Heroicon before a badge's label. Cards carry the icon's name; each SVG is sent once per request in an `icons` map (in the config and in every `kanbanRefresh`, `kanbanMore` and `kanbanMove` answer), so a board of hundreds of cards stays small. `kanbanMore` now answers `{cards, icons}` instead of a bare list (#3).
 - `Column::icon()` next to the colour dot and `Column::description()` as a tooltip on the header (#3).
-- Fixed: an `Htmlable` column label (`new HtmlString('…')`) is drawn as HTML in the header and the menus instead of showing its markup escaped; plain strings are still escaped. `Column::label()` also accepts an `Htmlable` directly.
+- Fixed: an `Htmlable` column label (`new HtmlString('…')`) is drawn as HTML in the header and the menus instead of showing its markup escaped; plain strings are still escaped. `Column::label()` also accepts an `Htmlable` directly, and a label closure runs once per column and request.
 - The instant search also matches a card's description and due label.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.

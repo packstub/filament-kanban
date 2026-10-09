@@ -4,6 +4,8 @@ namespace Packstub\Kanban;
 
 use BackedEnum;
 use DateTimeInterface;
+use Filament\Support\Contracts\ScalableIcon;
+use Filament\Support\Enums\IconSize;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Carbon;
 
@@ -40,7 +42,7 @@ class Card implements Arrayable
     /** @var list<string> */
     protected array $meta = [];
 
-    /** @var list<array{label: string, color: ?string, icon?: string}> */
+    /** @var list<array{label: string, color: ?string, icon?: string}>  icon is the icon's name */
     protected array $badges = [];
 
     protected bool $draggable = true;
@@ -94,33 +96,36 @@ class Card implements Arrayable
     }
 
     /**
-     * A thin bar in the card's foot. With a total, `progress(3, 5)` draws 3/5 and says so
-     * on hover; without one, the value is a fraction between 0 and 1 (`0.6` is 60%).
-     * A full bar takes the panel's success colour.
+     * A thin bar in the card's foot. Two numbers, `progress(3, 5)`, draw 3/5 and say so
+     * on hover; a total of null or 0 (`progress($done, $deal->steps_total)` with nothing
+     * to count) draws no bar. One number, `progress(0.6)`, is a fraction between 0 and 1,
+     * clamped. A full bar takes the panel's success colour.
      */
     public function progress(int|float|null $done, ?int $total = null): static
     {
-        if ($done === null) {
+        $fraction = func_num_args() < 2;
+
+        if ($done === null || (! $fraction && ! $total)) {
             $this->progress = null;
 
             return $this;
         }
 
-        $value = $total === null ? (float) $done : ($total > 0 ? $done / $total : 0.0);
-        $value = max(0.0, min(1.0, $value));
+        $value = max(0.0, min(1.0, $fraction ? (float) $done : $done / $total));
 
         $this->progress = [
             'value' => round($value, 4),
-            'label' => $total === null ? round($value * 100).'%' : "{$done}/{$total}",
+            'label' => $fraction ? round($value * 100).'%' : "{$done}/{$total}",
         ];
 
         return $this;
     }
 
     /**
-     * A date in the card's foot, coloured by the browser: danger once it is past,
-     * warning on the day. The label defaults to the date in `config('app.date_format')`
-     * (or `M j`); pass your own for "Tomorrow", "in 3 days"…
+     * A date in the card's foot, coloured by the browser: danger once the day is past,
+     * warning on the day. Only the calendar day travels, in the timezone of the date
+     * given (setTimezone() a datetime first). The label defaults to the date in
+     * `config('app.date_format')` (or `M j`); pass your own for "Tomorrow", "in 3 days"…
      */
     public function due(?DateTimeInterface $date, ?string $label = null): static
     {
@@ -150,15 +155,22 @@ class Card implements Arrayable
 
     /**
      * A small coloured tag; color is a Tailwind-ish name or any CSS colour. The icon
-     * (a Heroicon name or enum) is drawn before the label.
+     * (a Heroicon name or enum) is drawn before the label. The card carries its name
+     * only; the board sends each icon's SVG once (see Board::getIcons()).
      */
     public function badge(?string $label, ?string $color = null, bool $condition = true, string|BackedEnum|null $icon = null): static
     {
         if ($condition && filled($label)) {
             $badge = ['label' => $label, 'color' => $color];
 
-            if ($icon !== null && ($html = \Filament\Support\generate_icon_html($icon)?->toHtml())) {
-                $badge['icon'] = $html;
+            $name = match (true) {
+                $icon instanceof ScalableIcon => $icon->getIconForSize(IconSize::Medium),
+                $icon instanceof BackedEnum => $icon->value,
+                default => $icon,
+            };
+
+            if (filled($name)) {
+                $badge['icon'] = (string) $name;
             }
 
             $this->badges[] = $badge;

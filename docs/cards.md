@@ -12,7 +12,7 @@ A card is shaped in one closure that receives the record and returns a `Card`:
     ->badge('call', 'sky', $deal->needs_call, icon: 'heroicon-m-phone')
     ->meta([$deal->title])
     ->due($deal->close_at)
-    ->progress($deal->steps_done, $deal->steps_total)
+    ->progress($deal->steps_done, $deal->steps_total) // no bar while there is nothing to count
     ->avatar($deal->owner?->avatar_url, $deal->owner?->name)
     ->locked($deal->is_closed)
     ->url(DealResource::getUrl('edit', ['record' => $deal])))
@@ -36,10 +36,10 @@ Cards are plain data drawn in the browser, so a board of a few hundred cards is 
 | `title()` | The main line. |
 | `aside()` | Right-aligned next to the eyebrow: an amount, a date. |
 | `description()` | A muted line under the title, clamped to two lines. |
-| `badge($label, $color, $condition = true, icon: ...)` | A small coloured tag; call it once per badge. The icon (a Heroicon name or enum) is drawn before the label. |
+| `badge($label, $color, $condition = true, icon: ...)` | A small coloured tag; call it once per badge. The icon (a Heroicon name or enum) is drawn before the label; its SVG travels once per board, not with every card. |
 | `meta([...])` | A muted line of parts joined with `·`; empty parts are dropped. |
-| `due($date, $label = null)` | A date in the foot with a calendar glyph, coloured `danger` once it is past and `warning` on the day. |
-| `progress($done, $total = null)` | A thin bar at the bottom of the foot: `progress(3, 5)` is 3/5 (the hover says so), `progress(0.6)` is 60 %. Full takes the `success` colour. |
+| `due($date, $label = null)` | A date in the foot with a calendar glyph, coloured `danger` once its day is past and `warning` on the day. |
+| `progress($done, $total)` or `progress($fraction)` | A thin bar at the bottom of the foot: `progress(3, 5)` is 3/5 (the hover says so), `progress(0.6)` is 60 %. Full takes the `success` colour. |
 | `avatar($url, $name)` | A round picture at the end of the foot; without a URL, the initials of the name. Call it again for more people. |
 | `accent($color)` | A coloured left edge, for a card that needs attention. |
 | `url()` | Clicking the card opens this URL (unless a [click action](actions.md#open-a-card-in-a-modal) is set; a modified click still opens the URL). |
@@ -51,11 +51,17 @@ Colours take the same names as columns (`gray`, `red`, `amber`, `emerald`, `prim
 
 ### Due dates
 
-`due()` takes any `DateTimeInterface`. The label defaults to the date in `config('app.date_format')`, or `M j` (`Oct 7`) when the app has none; pass your own for `due($date, 'Tomorrow')` or `due($date, $date->diffForHumans())`. The colour is decided in the browser from the ISO date, in the viewer's own calendar day, so a card turns red at the viewer's midnight, not the server's.
+`due()` takes any `DateTimeInterface`. The label defaults to the date in `config('app.date_format')`, or `M j` (`Oct 7`) when the app has none; pass your own for `due($date, 'Tomorrow')` or `due($date, $date->diffForHumans())`.
+
+Only the calendar day travels to the browser, taken in the timezone of the date you pass; the browser compares it with the viewer's current day. The check is per day: a card is `warning` all day on its due date, whatever the time, and `danger` from the next day. A date-only column (`date` cast) is right as it is. A datetime column is stored in the app's timezone (usually UTC), so convert it to the user's first, or 23:30 UTC on the 7th shows as the 7th to a viewer for whom it was already the 8th:
+
+```php
+->due($deal->close_at?->setTimezone(auth()->user()->timezone))
+```
 
 ### Progress
 
-With a total, `progress($done, $total)` draws `done / total` and shows `3/5` on hover. With one number, it is a fraction between 0 and 1 (`0.6` is 60 %); values outside the range are clamped. The bar is `primary` and turns `success` when full.
+Two numbers, `progress($done, $total)`, draw `done / total` and show `3/5` on hover. When the total is `null` or `0` there is nothing to count and no bar is drawn, so `progress($task->steps_done, $task->steps_total)` is safe with a nullable column. One number, `progress($fraction)`, is a fraction between 0 and 1 (`0.6` is 60 %); values outside the range are clamped, so pass a percentage as `$percent / 100`. The bar is `primary` and turns `success` when full.
 
 ## Locking a card
 
@@ -67,7 +73,7 @@ Column rules (`draggable()`, `droppable()`, `accepts()`) apply to every card in 
     ->locked($task->assignee_id !== auth()->id()))
 ```
 
-A locked card shows a small lock before its title, cannot be dragged, and offers no "Move to" in its menu (its actions stay). The server reads the card again on every move and refuses with "This card cannot be moved." whatever the browser sent, for a reorder inside the column too. `draggable(false)` is the same as `locked()`. Nothing is evaluated per card beyond the card closure, which already runs for every card drawn.
+A locked card shows a small lock in its corner (with the refusal message as its tooltip and accessible name), cannot be dragged, and offers no "Move to" in its menu (its actions stay). The server reads the card again on every move and refuses with "This card cannot be moved." whatever the browser sent, for a reorder inside the column too. `draggable(false)` is the same as `locked()`. Nothing is evaluated per card beyond the card closure, which already runs for every card drawn.
 
 ## Search on cards
 
