@@ -44,19 +44,37 @@ function choose(text, count, locale) {
     return (plain[Math.min(Math.max(index, 0), plain.length - 1)] ?? text).trim()
 }
 
+// This tab's token: sent with every change, echoed in the broadcast, so the tab ignores its own.
+const ORIGIN = Math.random().toString(36).slice(2, 12)
+
+// Without swimlanes every column is one cell: the board draws this single, nameless lane.
+const NO_LANE = { value: null }
+
+// The viewer's calendar day as an ISO date (YYYY-MM-DD), compared with a card's due date.
+function localDay(now = new Date()) {
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0')
+}
+
 export default function packstubKanban(config) {
     return {
-        columns: config.columns,
+        columns: config.columns || [],
+        lanes: config.lanes || null,
+        icons: config.icons || {}, // badge icons by name, grown from every answer that carries cards
+        today: localDay(), // the viewer's calendar day, for due dates; moves on at midnight
         filters: config.filters,
         cardActions: config.cardActions || [],
+        bulkActions: config.bulkActions || [],
         createAction: config.createAction,
         t: config.i18n,
         search: '',
         active: Object.fromEntries(config.filters.map((f) => [f.name, ''])),
         hidden: [],
         folded: {},
+        foldedLanes: {},
         loading: {},
         dragging: null,
+        selected: [],
+        lastSelected: null,
         menu: null,
         sidebar: false,
         density: config.density || 'comfortable',
@@ -67,9 +85,28 @@ export default function packstubKanban(config) {
         refreshTimer: null,
         refreshSeq: 0,
         pending: 0,
+        stale: false,
+        drawn: config.columns !== null, // false until a board drawn again has its columns
+        retries: 0,
+
+        /** Whether cards can be selected: the board has bulk actions, or asked for it with selectable(). */
+        get hasSelection() {
+            return !! config.selectable
+        },
+
+        /** The rows of every column: the lanes, or one nameless lane without swimlanes. */
+        get rows() {
+            return this.lanes || [NO_LANE]
+        },
 
         init() {
             this.restore()
+
+            // Drawn again on a later request (the server sends no state then): ask for it
+            // instead of drawing an empty board.
+            if (! this.drawn) {
+                this.refresh()
+            }
 
             if (config.focus) {
                 document.body.classList.toggle('pk-focus-sidebar', this.sidebar)
@@ -105,6 +142,12 @@ export default function packstubKanban(config) {
             // Safari before 14 has addListener() only.
             this.media?.addEventListener ? this.media.addEventListener('change', this.onMedia) : this.media?.addListener?.(this.onMedia)
 
+            // A board left open overnight recolours its due dates.
+            this.clock = setInterval(() => {
+                const day = localDay()
+                if (day !== this.today) this.today = day
+            }, 60000)
+
             // Pick up other people's changes, but never while a card is in the air.
             if (config.poll) {
                 this.poller = setInterval(() => {
@@ -113,21 +156,65 @@ export default function packstubKanban(config) {
                     }
                 }, config.poll)
             }
+
+            // With Laravel Echo on the page, another tab's change reloads the board at once;
+            // a burst of events is one request. Echo may arrive after the board (Filament
+            // dispatches EchoLoaded when it does).
+            if (config.broadcast) {
+                this.$watch('menu', (menu) => menu || this.settle())
+                this.onEcho = () => this.listen()
+                window.Echo ? this.listen() : window.addEventListener('EchoLoaded', this.onEcho, { once: true })
+            }
         },
 
         destroy() {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
             this.media?.removeEventListener ? this.media.removeEventListener('change', this.onMedia) : this.media?.removeListener?.(this.onMedia)
+            window.removeEventListener('EchoLoaded', this.onEcho)
             clearInterval(this.poller)
+            clearTimeout(this.echoTimer)
+            // Only this board's listener: the channel may be shared with other boards and the app.
+            if (this.channel) this.channel.stopListening(config.broadcast.event, this.onChange)
+            document.removeEventListener('visibilitychange', this.onVisible)
+            clearInterval(this.clock)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
         },
 
+        listen() {
+            if (this.channel || ! window.Echo) return
+
+            this.onChange = (payload) => {
+                if (payload?.origin && payload.origin === ORIGIN) return
+                // Another board on the same channel (two keys mapped to one channel name).
+                if (payload?.board != null && config.broadcast.board != null && payload.board !== config.broadcast.board) return
+                clearTimeout(this.echoTimer)
+                this.echoTimer = setTimeout(() => {
+                    this.stale = true
+                    this.settle()
+                }, 300)
+            }
+            this.onVisible = () => this.settle()
+            document.addEventListener('visibilitychange', this.onVisible)
+
+            this.channel = window.Echo.private(config.broadcast.channel)
+            this.channel.listen(config.broadcast.event, this.onChange)
+        },
+
+        // A change that arrived while a card was in the air, a menu was open or the tab was in
+        // the background is loaded once the drop has settled, the menu closed, the tab shown.
+        settle() {
+            if (this.stale && ! this.dragging && ! this.pending && ! this.menu && ! document.hidden) {
+                this.stale = false
+                this.refresh(true)
+            }
+        },
+
         /* ------------------------------------------------------------ drag and drop */
 
-        bindSortable(el, column) {
+        bindSortable(el, column, lane = NO_LANE) {
             if (! window.Sortable || el.sortable) {
                 return
             }
@@ -136,11 +223,13 @@ export default function packstubKanban(config) {
                 group: {
                     name: config.key,
                     pull: () => column.draggable,
-                    put: (to, from) => this.canDrop(from.el.dataset.column, to.el.dataset.column),
+                    put: (to, from) => this.canDrop(from.el.dataset.column, to.el.dataset.column, from.el.dataset.lane, to.el.dataset.lane),
                 },
                 sort: config.reorderable,
                 draggable: '.pk-card',
-                filter: '.pk-card-menu, .pk-card-popover, .pk-card-pending',
+                // A locked card is filtered rather than left out of `draggable`, so Sortable's
+                // indexes still count every card and match the column's state.
+                filter: '.pk-card-locked, .pk-card-menu, .pk-card-popover, .pk-card-pending',
                 preventOnFilter: false,
                 disabled: ! column.draggable && ! column.droppable,
                 animation: 150,
@@ -162,7 +251,7 @@ export default function packstubKanban(config) {
                     // in the air, Alpine must not initialize that copy outside the board's scope.
                     document.body._x_ignoreMutationObserver = true
                     this.menu = null
-                    this.dragging = { from: event.from.dataset.column, id: event.item.dataset.id }
+                    this.dragging = { from: event.from.dataset.column, id: event.item.dataset.id, lane: event.from.dataset.lane }
                 },
                 onEnd: (event) => {
                     delete document.body._x_ignoreMutationObserver
@@ -175,10 +264,11 @@ export default function packstubKanban(config) {
             const id = event.item.dataset.id
             const from = event.from.dataset.column
             const to = event.to.dataset.column
+            const lane = event.to.dataset.lane // undefined without swimlanes
             this.dragging = null
 
-            if (from === to && event.oldDraggableIndex === event.newDraggableIndex) {
-                return
+            if (from === to && event.from.dataset.lane === lane && event.oldDraggableIndex === event.newDraggableIndex) {
+                return this.settle()
             }
 
             // Put the node back where Sortable took it from and let Alpine move it from
@@ -188,15 +278,45 @@ export default function packstubKanban(config) {
             const ref = cards(event.from)[event.oldDraggableIndex] ?? null
             ref ? event.from.insertBefore(event.item, ref) : event.from.appendChild(event.item)
 
-            this.move(id, from, to, event.newDraggableIndex, { pointer: true })
+            this.move(id, from, to, event.newDraggableIndex, lane, { pointer: true })
         },
 
         moveTo(id, from, to) {
-            this.move(id, from, to, 0)
-            this.$nextTick(() => this.$refs.board.querySelector(`.pk-cards[data-column="${CSS.escape(to)}"]`)?.scrollTo({ top: 0, behavior: 'smooth' }))
+            const lane = this.findColumn(from)?.cards.find((c) => c.id === id)?.lane
+            this.move(id, from, to, 0, lane)
+            const cell = lane === undefined ? '' : `[data-lane="${CSS.escape(lane)}"]`
+            this.$nextTick(() => this.$refs.board.querySelector(`.pk-cards[data-column="${CSS.escape(to)}"]${cell}`)?.scrollTo({ top: 0, behavior: 'smooth' }))
         },
 
-        move(id, from, to, index, options = {}) {
+        // Undo is a move back, through every rule and moveUsing() again; a refusal shows as usual.
+        undo(detail) {
+            if (! detail || detail.key !== config.key) return
+            this.move(detail.id, detail.to, detail.from, config.reorderable ? detail.index : 0, detail.lane ?? undefined, { undo: true })
+        },
+
+        // Only when the way back is open (a one-way accepts(), a column that is not draggable): the server decides anyway.
+        // With swimlanes, `lane` is the lane the card came from (it goes back there).
+        offerUndo(id, from, to, index, lane = undefined, toLane = undefined) {
+            if (! config.undo || ! window.FilamentNotification || ! window.FilamentNotificationAction || ! this.canDrop(to, from, toLane, lane)) return false
+
+            new window.FilamentNotification()
+                .title(this.tr('moved_to', { column: this.findColumn(to)?.label ?? to }))
+                .success()
+                .duration(config.undo * 1000)
+                .actions([
+                    new window.FilamentNotificationAction('undo')
+                        .label(this.t.undo)
+                        .button()
+                        .close()
+                        .dispatch('packstub-kanban-undo', { key: config.key, id, from, to, index, lane: lane ?? null }),
+                ])
+                .send()
+
+            return true
+        },
+
+        // `index` is the position in the target cell (the column, or the column's lane with swimlanes).
+        move(id, from, to, index, lane = undefined, options = {}) {
             const source = this.findColumn(from)
             const target = this.findColumn(to)
             const at = source.cards.findIndex((c) => c.id === id)
@@ -205,10 +325,19 @@ export default function packstubKanban(config) {
                 return
             }
 
+            // Where the card sat in its own cell, for an Undo that puts it back there.
+            const cellAt = this.lanes ? this.cardsIn(source, { value: source.cards[at].lane }).indexOf(source.cards[at]) : at
             const [card] = source.cards.splice(at, 1)
-            target.cards.splice(Math.min(index, target.cards.length), 0, card)
+            const fromLane = card.lane
+            const laned = this.lanes && lane !== undefined
+            if (laned) card.lane = lane
+            target.cards.splice(this.cellIndex(target, lane, index), 0, card)
 
             const shift = (by) => {
+                if (laned) {
+                    source.counts[fromLane] = (source.counts[fromLane] || 0) - by
+                    target.counts[lane] = (target.counts[lane] || 0) + by
+                }
                 if (from === to) return
                 source.count -= by
                 target.count += by
@@ -219,7 +348,7 @@ export default function packstubKanban(config) {
             shift(1)
             card._pending = true
             this.pending++
-            const order = config.reorderable ? target.cards.map((c) => c.id) : null
+            const order = config.reorderable ? (laned ? this.cardsIn(target, { value: lane }) : target.cards).map((c) => c.id) : null
 
             // A keyboard user keeps their place: the card is drawn again (in another
             // column, or back where it was), so focus follows it by id. Only when focus
@@ -239,8 +368,9 @@ export default function packstubKanban(config) {
             const undo = (message) => {
                 const now = target.cards.findIndex((c) => c.id === id)
                 if (now >= 0) target.cards.splice(now, 1)
-                source.cards.splice(Math.min(at, source.cards.length), 0, card)
                 shift(-1)
+                if (laned) card.lane = fromLane
+                source.cards.splice(Math.min(at, source.cards.length), 0, card)
                 card._pending = false
                 this.notify(message, 'danger')
                 // Filament's notifications are a live region already; the board's own only steps in without them.
@@ -248,20 +378,24 @@ export default function packstubKanban(config) {
                 if (keepFocus()) this.refocus(id, from)
             }
 
-            this.$wire.kanbanMove(id, to, order, this.search, this.active)
+            this.$wire.kanbanMove(id, to, order, this.search, this.active, laned ? lane : null, ORIGIN)
                 .then((result) => {
                     if (! result?.ok) {
                         return undo(result?.message || this.tr('failed'))
                     }
+
+                    Object.assign(this.icons, result.icons || {})
 
                     for (const [name, summary] of Object.entries(result.summaries || {})) {
                         const column = this.findColumn(name)
                         if (column) column.summary = summary
                     }
 
-                    if (from !== to) {
-                        this.$dispatch('kanban-card-moved', { id, from, to, card: result.card })
-                        this.announce(this.tr('moved_to', { column: target.label }))
+                    if (from !== to || (laned && lane !== fromLane)) {
+                        this.$dispatch('kanban-card-moved', { id, from, to, ...(laned ? { lane } : {}), card: result.card })
+                        // The Undo notification is a live region of its own; without it the board announces the move.
+                        const offered = ! options.undo && this.offerUndo(id, from, to, cellAt, laned ? fromLane : undefined, laned ? lane : undefined)
+                        if (from !== to && ! offered) this.announce(this.tr('moved_to', { column: target.label }))
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)
@@ -274,11 +408,25 @@ export default function packstubKanban(config) {
                     }
                 })
                 .catch(() => undo(this.tr('offline')))
-                .finally(() => this.pending--)
+                .finally(() => {
+                    this.pending--
+                    this.settle()
+                })
         },
 
-        canDrop(from, to) {
+        canDrop(from, to, fromLane = undefined, toLane = undefined) {
+            // A lane may take no cards from other lanes (the derived "Other" lane), as on the server.
+            if (this.lanes && toLane !== undefined && fromLane !== toLane && this.lanes.find((l) => l.value === toLane)?.droppable === false) {
+                return false
+            }
+
             if (from === to) {
+                // A lane change inside the column is a move: the column must let cards out and in, as on the server.
+                if (this.lanes && fromLane !== toLane) {
+                    const column = this.findColumn(from)
+                    return !! (column && column.draggable && column.droppable)
+                }
+
                 return config.reorderable
             }
 
@@ -300,12 +448,17 @@ export default function packstubKanban(config) {
         },
 
         hasMenu(card, column) {
-            return this.actionsFor(card).length > 0 || (column.draggable && this.targets(column.name).length > 0)
+            return this.actionsFor(card).length > 0 || (this.canMove(card, column) && this.targets(column.name).length > 0)
+        },
+
+        // The column lets cards out and the card itself is not locked (the server checks both again).
+        canMove(card, column) {
+            return !! column.draggable && card.draggable !== false
         },
 
         runAction(name, card) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecord: card.id })
+            this.$wire.mountAction(name, { kanbanRecord: card.id, kanbanOrigin: ORIGIN })
         },
 
         // Whether a click on the card runs the click action (a card with a url is a link anyway).
@@ -313,10 +466,16 @@ export default function packstubKanban(config) {
             return this.clickAction && (! card.actions || card.actions.includes(config.cardAction))
         },
 
-        open(event, card) {
+        open(event, card, column = null, lane = NO_LANE) {
+            // Ctrl/⌘-click toggles the card in the selection, Shift-click selects up to it; a selected card is not opened.
+            if (this.hasSelection && (event.metaKey || event.ctrlKey || event.shiftKey || this.isSelected(card.id))) {
+                event.preventDefault()
+                return this.toggleSelect(card, column, lane, event)
+            }
+
             if (this.clickable(card)) {
-                // A modified click still opens the url in a new tab.
-                if (card.url && (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)) return
+                // A middle click (or, on a board without selection, a modified click) still opens the url in a new tab.
+                if (card.url && (event.button === 1 || event.metaKey || event.ctrlKey || event.shiftKey)) return
                 event.preventDefault()
                 return this.runAction(config.cardAction, card)
             }
@@ -324,8 +483,14 @@ export default function packstubKanban(config) {
             if (! card.url) event.preventDefault()
         },
 
+        // The server resolves the column again and takes the search and filters as it does on a refresh.
+        runColumnAction(name, column) {
+            this.menu = null
+            this.$wire.mountAction(name, { kanbanColumn: column.name, kanbanSearch: this.search, kanbanFilters: this.active, kanbanOrigin: ORIGIN })
+        },
+
         create(column) {
-            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name })
+            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name, kanbanOrigin: ORIGIN })
         },
 
         targets(from) {
@@ -495,6 +660,170 @@ export default function packstubKanban(config) {
             if (next) this.selectTab(next.name)
         },
 
+        /* ------------------------------------------------------------ selection */
+
+        isSelected(id) {
+            return this.selected.includes(id)
+        },
+
+        // Shift selects the range from the last selected card, inside the same cell; otherwise the card is toggled.
+        toggleSelect(card, column, lane = NO_LANE, event = null) {
+            const cell = column ? this.cardsIn(column, lane).filter((c) => this.matches(c)).map((c) => c.id) : []
+            const from = cell.indexOf(this.lastSelected)
+            const to = cell.indexOf(card.id)
+
+            let next
+            if (event?.shiftKey && from >= 0 && to >= 0) {
+                const range = cell.slice(Math.min(from, to), Math.max(from, to) + 1)
+                next = [...new Set([...this.selected, ...range])]
+            } else if (this.isSelected(card.id)) {
+                next = this.selected.filter((id) => id !== card.id)
+            } else {
+                next = [...this.selected, card.id]
+            }
+
+            // The server refuses a selection past the cap as a whole, so the browser stops there.
+            if (config.maxSelection && next.length > config.maxSelection) {
+                return this.notify(this.t.bulk_limit.replace(':max', config.maxSelection), 'danger')
+            }
+
+            this.selected = next
+
+            this.lastSelected = card.id
+            this.menu = null
+        },
+
+        clearSelection() {
+            this.selected = []
+            this.lastSelected = null
+        },
+
+        // A card that left the board (deleted by an action, filtered out, dropped by a poll) leaves the selection too.
+        pruneSelection() {
+            if (! this.selected.length) return
+            const loaded = new Set(this.columns.flatMap((c) => c.cards.map((x) => x.id)))
+            this.selected = this.selected.filter((id) => loaded.has(id))
+            if (this.lastSelected && ! loaded.has(this.lastSelected)) this.lastSelected = null
+        },
+
+        /** Where every selected card may go: the columns each one's source column allows (locked cards stay). */
+        bulkTargets() {
+            const sources = [...new Set(this.movableSelection().map(([column]) => column.name))]
+
+            return sources.length
+                ? this.columns.filter((c) => ! this.hidden.includes(c.name) && sources.some((from) => from !== c.name && this.canDrop(from, c.name)))
+                : []
+        },
+
+        /** The selected cards with their columns, in board order; a selection outlives a refresh only where the cards still are. */
+        selectedCards() {
+            const pairs = []
+            for (const column of this.columns) {
+                for (const card of column.cards) {
+                    if (this.isSelected(card.id)) pairs.push([column, card])
+                }
+            }
+            return pairs
+        },
+
+        /** The selected cards a bulk move may take: not pending, and not locked (`draggable: false` on the card). */
+        movableSelection() {
+            return this.selectedCards().filter(([, card]) => ! card._pending && card.draggable !== false)
+        },
+
+        runBulkAction(name) {
+            this.menu = null
+            this.$wire.mountAction(name, { kanbanRecords: this.selectedCards().map(([, card]) => card.id), kanbanOrigin: ORIGIN })
+        },
+
+        // Every selected card moves at once; the ones the server refuses come back, with one notification.
+        moveMany(to) {
+            const target = this.findColumn(to)
+            const moves = []
+
+            // Cards already there, or from a column that may not drop into it, stay put.
+            for (const [source, card] of this.movableSelection()) {
+                if (source.name === to || ! this.canDrop(source.name, to)) continue
+                const at = source.cards.indexOf(card)
+                source.cards.splice(at, 1)
+                target.cards.push(card)
+                source.count--
+                target.count++
+                if (source.total !== null) source.total--
+                if (target.total !== null) target.total++
+                if (this.lanes) {
+                    source.counts[card.lane] = (source.counts[card.lane] || 0) - 1
+                    target.counts[card.lane] = (target.counts[card.lane] || 0) + 1
+                }
+                card._pending = true
+                moves.push({ source, card, at })
+            }
+
+            this.clearSelection()
+
+            if (! moves.length) return
+
+            const undo = ({ source, card, at }) => {
+                const now = target.cards.indexOf(card)
+                if (now >= 0) target.cards.splice(now, 1)
+                source.cards.splice(Math.min(at, source.cards.length), 0, card)
+                source.count++
+                target.count--
+                if (source.total !== null) source.total++
+                if (target.total !== null) target.total--
+                if (this.lanes) {
+                    source.counts[card.lane] = (source.counts[card.lane] || 0) + 1
+                    target.counts[card.lane] = (target.counts[card.lane] || 0) - 1
+                }
+                card._pending = false
+            }
+
+            this.pending++
+
+            this.$wire.kanbanMoveMany(moves.map((m) => m.card.id), to, this.search, this.active, null, ORIGIN)
+                .then((result) => {
+                    if (! result || (! result.ok && result.message)) {
+                        moves.forEach(undo)
+                        return this.notify(result?.message || this.t.failed, 'danger')
+                    }
+
+                    Object.assign(this.icons, result.icons || {})
+
+                    for (const [name, summary] of Object.entries(result.summaries || {})) {
+                        const column = this.findColumn(name)
+                        if (column) column.summary = summary
+                    }
+
+                    const refused = new Map((result.refused || []).map((r) => [r.id, r.message]))
+                    moves.filter((m) => refused.has(m.card.id)).forEach(undo)
+
+                    for (const fresh of result.moved || []) {
+                        const move = moves.find((m) => m.card.id === fresh.id)
+                        const now = target.cards.findIndex((c) => c.id === fresh.id)
+                        if (move) this.$dispatch('kanban-card-moved', { id: fresh.id, from: move.source.name, to, card: fresh })
+                        if (now >= 0) target.cards[now] = { ...fresh, _flash: true }
+                    }
+
+                    setTimeout(() => {
+                        for (const c of target.cards) if (c._flash) c._flash = false
+                    }, 900)
+
+                    if (refused.size) {
+                        const reasons = [...new Set(refused.values())].slice(0, 3).join(' ')
+                        const title = refused.size === 1 ? this.t.bulk_refused_one : this.t.bulk_refused.replace(':count', refused.size)
+                        this.notify(title + ' ' + reasons, 'danger')
+                    }
+                })
+                .catch(() => {
+                    moves.forEach(undo)
+                    this.notify(this.t.offline, 'danger')
+                })
+                .finally(() => {
+                    this.pending--
+                    this.settle()
+                })
+        },
+
         /* ------------------------------------------------------------ search, filters, paging */
 
         matches(card) {
@@ -508,7 +837,7 @@ export default function packstubKanban(config) {
             let text = TEXT.get(raw)
 
             if (text === undefined) {
-                text = [card.eyebrow, card.title, card.aside, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
+                text = [card.eyebrow, card.title, card.aside, card.description, card.due?.label, ...(card.meta || []), ...(card.badges || []).map((b) => b.label), ...(card.avatars || []).map((a) => a.name), card.search]
                     .filter(Boolean).join(' ').toLowerCase()
                 TEXT.set(raw, text)
             }
@@ -516,8 +845,8 @@ export default function packstubKanban(config) {
             return needle.split(/\s+/).every((word) => text.includes(word))
         },
 
-        visibleCount(column) {
-            return column.cards.filter((card) => this.matches(card)).length
+        visibleCount(column, lane = NO_LANE) {
+            return this.cardsIn(column, lane).filter((card) => this.matches(card)).length
         },
 
         queueRefresh() {
@@ -530,18 +859,56 @@ export default function packstubKanban(config) {
         refresh(background = false) {
             clearTimeout(this.refreshTimer)
             const seq = ++this.refreshSeq
-            const loaded = background ? Object.fromEntries(this.columns.map((c) => [c.name, c.cards.length])) : {}
+            const loaded = background ? Object.fromEntries(this.columns.map((c) => [c.name, this.lanes
+                ? Object.fromEntries(this.lanes.map((l) => [l.value, this.loadedIn(c, l)]))
+                : c.cards.length])) : {}
 
-            this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
-                if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
+            this.$wire.kanbanRefresh(this.search, this.active, loaded, ! this.drawn).catch(() => null).then((result) => {
+                if (seq !== this.refreshSeq) {
+                    return
+                }
+
+                // Without its columns the board would stay empty: try again, a little later each time.
+                if (! result && ! this.drawn && this.retries < 5) {
+                    this.refreshTimer = setTimeout(() => this.refresh(), 1000 * 2 ** this.retries++)
+                }
+
+                if (! result) {
+                    return
+                }
+
+                // A drag started meanwhile: keep the answer for after the drop (see settle()).
+                if (background && (this.dragging || this.pending)) {
+                    this.stale = true
+                    return
+                }
+
+                Object.assign(this.icons, result.icons || {})
+
+                if (this.lanes && result.lanes) {
+                    this.lanes = result.lanes
+                    this.restoreLanes()
+                }
+
+                if (! this.drawn) {
+                    this.columns = result.columns
+                    this.drawn = true
+                    this.restore(false) // collapsed() columns and the saved folded/hidden ones, now that there are columns
                     return
                 }
 
                 for (const fresh of result.columns) {
                     const column = this.findColumn(fresh.name)
                     if (column) {
+                        Object.assign(column, {
+                            label: fresh.label,
+                            labelHtml: fresh.labelHtml,
+                            icon: fresh.icon,
+                            description: fresh.description,
+                        })
                         column.cards = fresh.cards
                         column.count = fresh.count
+                        column.counts = fresh.counts
                         column.total = fresh.total
                         column.summary = fresh.summary
                     }
@@ -551,40 +918,46 @@ export default function packstubKanban(config) {
                     const shown = result.columns.filter((c) => ! this.hidden.includes(c.name))
                     this.announce(this.tr('matches_count', { count: shown.reduce((sum, c) => sum + (c.count || 0), 0) }))
                 }
+
+                this.pruneSelection()
             })
         },
 
         // "Load more" loads itself when it scrolls into view; the button stays for keyboards.
-        observeMore(el, column) {
+        observeMore(el, column, lane = NO_LANE) {
             if (! window.IntersectionObserver) return
             this.moreObserver ??= new IntersectionObserver((entries) => {
                 for (const entry of entries) {
                     if (entry.isIntersecting && entry.target.offsetParent) entry.target._more?.()
                 }
             }, { rootMargin: '0px 0px 200px 0px' })
-            el._more = () => this.more(column)
+            el._more = () => this.more(column, lane)
             this.moreObserver.observe(el)
         },
 
-        more(column) {
-            if (this.loading[column.name] || column.cards.length >= column.count) {
+        more(column, lane = NO_LANE) {
+            const key = this.cellKey(column, lane)
+
+            if (this.loading[key] || this.loadedIn(column, lane) >= this.countIn(column, lane)) {
                 return
             }
 
-            this.loading[column.name] = true
+            this.loading[key] = true
 
-            this.$wire.kanbanMore(column.name, column.cards.length, this.search, this.active)
-                .then((cards) => {
+            this.$wire.kanbanMore(column.name, this.loadedIn(column, lane), this.search, this.active, this.lanes ? lane.value : null)
+                .then((result) => {
+                    Object.assign(this.icons, result?.icons || {})
                     const known = new Set(column.cards.map((c) => c.id))
-                    const fresh = (cards || []).filter((c) => ! known.has(c.id))
+                    const fresh = (result?.cards || []).filter((c) => ! known.has(c.id))
                     column.cards.push(...fresh)
                     this.announce(this.tr('loaded_more', { count: fresh.length }))
                 })
                 .finally(() => {
-                    this.loading[column.name] = false
+                    this.loading[key] = false
                     // Still in view (a short page)? Observing again reports it, and the next page loads.
                     this.$nextTick(() => {
-                        const el = this.$root.querySelector(`.pk-more[data-column="${CSS.escape(column.name)}"]`)
+                        const cell = this.lanes ? `[data-lane="${CSS.escape(lane.value)}"]` : ''
+                        const el = this.$root.querySelector(`.pk-more[data-column="${CSS.escape(column.name)}"]${cell}`)
                         if (el && this.moreObserver) {
                             this.moreObserver.unobserve(el)
                             this.moreObserver.observe(el)
@@ -597,6 +970,11 @@ export default function packstubKanban(config) {
 
         toggleFold(name) {
             this.folded[name] = ! this.folded[name]
+            this.persist()
+        },
+
+        toggleLane(value) {
+            this.foldedLanes[value] = ! this.foldedLanes[value]
             this.persist()
         },
 
@@ -619,7 +997,7 @@ export default function packstubKanban(config) {
             this.persist()
         },
 
-        restore() {
+        restore(sidebar = true) {
             for (const column of this.columns) {
                 this.folded[column.name] = !! column.collapsed
             }
@@ -630,7 +1008,7 @@ export default function packstubKanban(config) {
                     const names = this.columns.map((c) => c.name)
                     Object.assign(this.folded, Object.fromEntries(Object.entries(saved.folded || {}).filter(([n]) => names.includes(n))))
                     this.hidden = (saved.hidden || []).filter((n) => names.includes(n))
-                    this.sidebar = !! saved.sidebar
+                    if (sidebar) this.sidebar = !! saved.sidebar
                     if (saved.density === 'compact' || saved.density === 'comfortable') {
                         this.density = saved.density
                         this.densityChosen = true
@@ -638,18 +1016,108 @@ export default function packstubKanban(config) {
                     if (names.includes(saved.tab)) this.tab = saved.tab
                 }
             } catch (e) {}
+
+            this.restoreLanes()
+        },
+
+        // A lane starts as its definition says, then as the user left it (lanes that came and went keep their fold).
+        restoreLanes() {
+            for (const lane of this.lanes || []) {
+                if (this.foldedLanes[lane.value] === undefined) this.foldedLanes[lane.value] = !! lane.collapsed
+            }
+
+            try {
+                const saved = JSON.parse(localStorage.getItem(config.key) || 'null')
+                for (const [value, folded] of Object.entries(saved?.lanes || {})) {
+                    if (this.foldedLanes[value] !== undefined) this.foldedLanes[value] = !! folded
+                }
+            } catch (e) {}
         },
 
         persist() {
             try {
+                // Before the columns arrive, folded and hidden are empty: keep the saved ones.
+                const saved = this.drawn ? null : JSON.parse(localStorage.getItem(config.key) || 'null')
                 localStorage.setItem(config.key, JSON.stringify({
-                    folded: this.folded,
-                    hidden: this.hidden,
+                    folded: saved ? saved.folded || {} : this.folded,
+                    hidden: saved ? saved.hidden || [] : this.hidden,
                     sidebar: this.sidebar,
+                    lanes: this.foldedLanes,
                     density: this.densityChosen ? this.density : undefined,
                     tab: this.tab ?? undefined,
                 }))
             } catch (e) {}
+        },
+
+        /* ------------------------------------------------------------ swimlanes */
+
+        // Without swimlanes a column is one cell holding all its cards; with them, one cell per lane.
+        cardsIn(column, lane = NO_LANE) {
+            return this.lanes ? column.cards.filter((c) => c.lane === lane.value) : column.cards
+        },
+
+        countIn(column, lane = NO_LANE) {
+            return this.lanes ? (column.counts?.[lane.value] || 0) : column.count
+        },
+
+        loadedIn(column, lane = NO_LANE) {
+            return this.cardsIn(column, lane).length
+        },
+
+        cellKey(column, lane = NO_LANE) {
+            return this.lanes ? column.name + '\u0000' + lane.value : column.name
+        },
+
+        laneCount(lane) {
+            return this.columns.reduce((sum, c) => sum + (this.hidden.includes(c.name) ? 0 : this.countIn(c, lane)), 0)
+        },
+
+        // Where a card dropped at `index` of a cell goes in the column's card list (the lanes' cards are kept together).
+        cellIndex(column, lane, index) {
+            if (! this.lanes || lane === undefined) {
+                return Math.min(index, column.cards.length)
+            }
+
+            const cell = this.cardsIn(column, { value: lane })
+            const before = cell[index]
+            if (before) return column.cards.indexOf(before)
+            const last = cell[cell.length - 1]
+            return last ? column.cards.indexOf(last) + 1 : column.cards.length
+        },
+
+        /* ------------------------------------------------------------ swimlane layout */
+
+        // With swimlanes the board is a grid: the column headers on the first row, then a header row and a row
+        // of cells per lane. Columns are `display: contents`, so their headers and cells sit on the grid directly.
+        // The columns the lanes grid draws: the visible ones, or the selected tab's alone on a narrow screen.
+        gridColumns() {
+            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
+            return this.narrow ? visible.filter((c) => c.name === this.currentTab()) : visible
+        },
+
+        gridStyle() {
+            if (! this.lanes) return {}
+            if (this.narrow) return { 'grid-template-columns': 'minmax(0, 1fr)' }
+            const widths = this.gridColumns().map((c) => this.folded[c.name] ? 'var(--pk-folded-width)' : 'var(--pk-col-width)')
+            return { 'grid-template-columns': widths.join(' ') }
+        },
+
+        gridColumn(column) {
+            return this.gridColumns().indexOf(column) + 1
+        },
+
+        headStyle(column) {
+            return this.lanes ? { 'grid-column': this.gridColumn(column), 'grid-row': 1 } : {}
+        },
+
+        cellStyle(column, lane) {
+            if (! this.lanes) return {}
+            const i = this.lanes.findIndex((l) => l.value === lane.value)
+            return { 'grid-column': this.gridColumn(column), 'grid-row': 3 + i * 2 }
+        },
+
+        laneStyle(i) {
+            return { 'grid-column': '1 / -1', 'grid-row': 2 + i * 2 }
         },
 
         /* ------------------------------------------------------------ helpers */
@@ -668,6 +1136,21 @@ export default function packstubKanban(config) {
 
         initials(name) {
             return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()
+        },
+
+        // A column label is text (escaped here) unless the server rendered an Htmlable.
+        labelHtml(column) {
+            return column.labelHtml ? column.label : this.escape(column.label)
+        },
+
+        escape(text) {
+            return String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+        },
+
+        // Past or today, by the ISO date in the viewer's own calendar day.
+        dueState(due) {
+            if (! due?.date) return ''
+            return due.date < this.today ? 'pk-due-past' : (due.date === this.today ? 'pk-due-today' : '')
         },
 
         notify(message, status) {

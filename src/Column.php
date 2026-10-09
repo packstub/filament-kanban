@@ -4,6 +4,7 @@ namespace Packstub\Kanban;
 
 use BackedEnum;
 use Closure;
+use Filament\Actions\Action;
 use Filament\Support\Contracts\HasColor;
 use Filament\Support\Contracts\HasLabel;
 use Illuminate\Contracts\Support\Htmlable;
@@ -18,9 +19,17 @@ class Column
 {
     use Conditionable;
 
-    protected string|Closure|null $label = null;
+    protected string|Htmlable|Closure|null $label = null;
+
+    protected string|Htmlable|null $resolvedLabel = null;
+
+    protected bool $labelResolved = false;
 
     protected string|Closure|null $color = null;
+
+    protected string|BackedEnum|Closure|null $icon = null;
+
+    protected string|Closure|null $description = null;
 
     protected bool|Closure $visible = true;
 
@@ -36,6 +45,9 @@ class Column
 
     /** @var list<string>|Closure|null */
     protected array|Closure|null $accepts = null;
+
+    /** @var list<Action> */
+    protected array $actions = [];
 
     protected ?string $sortColumn = null;
 
@@ -72,9 +84,27 @@ class Column
         }, $enum::cases());
     }
 
-    public function label(string|Closure|null $label): static
+    /** Plain text is escaped; an Htmlable (an HtmlString, a rendered view) is drawn as HTML. */
+    public function label(string|Htmlable|Closure|null $label): static
     {
         $this->label = $label;
+        $this->labelResolved = false;
+
+        return $this;
+    }
+
+    /** A Heroicon (name or enum) next to the colour dot in the header. */
+    public function icon(string|BackedEnum|Closure|null $icon): static
+    {
+        $this->icon = $icon;
+
+        return $this;
+    }
+
+    /** A tooltip on the column header: what belongs here, who moves cards out. */
+    public function description(string|Closure|null $text): static
+    {
+        $this->description = $text;
 
         return $this;
     }
@@ -176,6 +206,25 @@ class Column
         return $this;
     }
 
+    /**
+     * Filament actions in the column's header menu (archive everything here, export the
+     * column…). A ColumnAction gets the column's cards as `$query` and the column as `$column`.
+     *
+     * @param  list<Action>  $actions
+     */
+    public function actions(array $actions): static
+    {
+        $this->actions = array_values($actions);
+
+        return $this;
+    }
+
+    /** @return list<Action> */
+    public function getActions(): array
+    {
+        return $this->actions;
+    }
+
     public function getName(): string
     {
         return $this->name;
@@ -183,13 +232,45 @@ class Column
 
     public function getLabel(): string
     {
-        $label = $this->evaluate($this->label);
+        $label = $this->resolveLabel();
 
         if ($label instanceof Htmlable) {
             return $label->toHtml();
         }
 
         return (string) ($label ?? str($this->name)->headline());
+    }
+
+    /** Whether getLabel() is HTML (an Htmlable label) rather than text for the browser to escape. */
+    public function hasHtmlLabel(): bool
+    {
+        return $this->resolveLabel() instanceof Htmlable;
+    }
+
+    /** A label closure runs once per column, whichever of getLabel() and hasHtmlLabel() asks first. */
+    protected function resolveLabel(): string|Htmlable|null
+    {
+        if (! $this->labelResolved) {
+            $this->resolvedLabel = $this->evaluate($this->label);
+            $this->labelResolved = true;
+        }
+
+        return $this->resolvedLabel;
+    }
+
+    /** The icon rendered to SVG, for the browser. */
+    public function getIcon(): ?string
+    {
+        $icon = $this->evaluate($this->icon);
+
+        return $icon === null ? null : \Filament\Support\generate_icon_html($icon)?->toHtml();
+    }
+
+    public function getDescription(): ?string
+    {
+        $description = $this->evaluate($this->description);
+
+        return blank($description) ? null : (string) $description;
     }
 
     public function getColor(): ?string
@@ -251,7 +332,7 @@ class Column
     }
 
     /** Filament colours are palettes (shade => value); the board draws one tone, the 500 shade. */
-    protected static function colorFromFilament(mixed $color): ?string
+    public static function colorFromFilament(mixed $color): ?string
     {
         if (is_array($color)) {
             return $color[500] ?? (array_values($color)[0] ?? null);
