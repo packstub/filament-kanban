@@ -249,6 +249,11 @@ export default function packstubKanban(config) {
         },
 
         canDrop(from, to, fromLane = undefined, toLane = undefined) {
+            // A lane may take no cards from other lanes (the derived "Other" lane), as on the server.
+            if (this.lanes && toLane !== undefined && fromLane !== toLane && this.lanes.find((l) => l.value === toLane)?.droppable === false) {
+                return false
+            }
+
             if (from === to) {
                 // A lane change inside the column is a move: the column must let cards out and in, as on the server.
                 if (this.lanes && fromLane !== toLane) {
@@ -361,7 +366,7 @@ export default function packstubKanban(config) {
             const sources = [...new Set(this.movableSelection().map(([column]) => column.name))]
 
             return sources.length
-                ? this.columns.filter((c) => ! this.hidden.includes(c.name) && sources.every((from) => from !== c.name && this.canDrop(from, c.name)))
+                ? this.columns.filter((c) => ! this.hidden.includes(c.name) && sources.some((from) => from !== c.name && this.canDrop(from, c.name)))
                 : []
         },
 
@@ -391,8 +396,9 @@ export default function packstubKanban(config) {
             const target = this.findColumn(to)
             const moves = []
 
+            // Cards already there, or from a column that may not drop into it, stay put.
             for (const [source, card] of this.movableSelection()) {
-                if (source.name === to) continue
+                if (source.name === to || ! this.canDrop(source.name, to)) continue
                 const at = source.cards.indexOf(card)
                 source.cards.splice(at, 1)
                 target.cards.push(card)

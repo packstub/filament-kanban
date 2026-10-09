@@ -53,6 +53,7 @@ class TaskBoard extends Component implements HasActions, HasSchemas
             ->cardAction('edit')
             ->bulkActions([
                 BulkAction::make('bumpAll')->action(fn (Collection $records) => $records->each->increment('priority')),
+                BulkAction::make('bumpQuery')->action(fn (BulkAction $action) => $action->getSelectedRecordsQuery()->increment('priority')),
             ])
             ->createAction(CreateAction::make()->schema([TextInput::make('title')->required()]))
             ->card(fn (Task $task) => Card::make()->title($task->title)->meta([$task->project?->name])->url('/tasks/'.$task->id));

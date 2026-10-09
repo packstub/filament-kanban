@@ -78,6 +78,18 @@ it('runs a bulk action on the selected records that are on the board, and on not
         ->and($hidden->fresh()->priority)->toBe(0);
 });
 
+it('gives a bulk action\'s query the same cleaned ids as its records', function () {
+    $a = task('A');
+    $b = task('B');
+
+    Livewire::test(TaskBoard::class)
+        ->callAction('bumpQuery', arguments: ['kanbanRecords' => [(string) $a->id, [(string) $b->id], '']])
+        ->assertHasNoErrors();
+
+    expect($a->fresh()->priority)->toBe(1)
+        ->and($b->fresh()->priority)->toBe(0); // a nested array is not an id, for the query either
+});
+
 it('hides a bulk action while nothing selected is on the board', function () {
     $hidden = task('Hidden', 'done');
     TaskBoard::$visible = ['todo', 'doing'];
@@ -93,7 +105,7 @@ it('hides a bulk action while nothing selected is on the board', function () {
 });
 
 it('offers the bulk actions to the browser, on components with Filament\'s action system only', function () {
-    expect(array_column(Livewire::test(TaskBoard::class)->instance()->getKanbanConfig()['bulkActions'], 'name'))->toBe(['bumpAll'])
+    expect(array_column(Livewire::test(TaskBoard::class)->instance()->getKanbanConfig()['bulkActions'], 'name'))->toBe(['bumpAll', 'bumpQuery'])
         ->and(Livewire::test(PlainBoard::class)->instance()->getKanbanConfig()['bulkActions'])->toBe([]);
 });
 

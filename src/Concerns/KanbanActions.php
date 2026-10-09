@@ -5,6 +5,7 @@ namespace Packstub\Kanban\Concerns;
 use Closure;
 use Filament\Actions\Action;
 use Packstub\Kanban\Actions\BulkAction;
+use Packstub\Kanban\Board;
 
 /**
  * Registers the board's card and create actions with Filament's action system, on
@@ -35,8 +36,9 @@ trait KanbanActions
             $ids = fn () => (array) ($action->getArguments()['kanbanRecords'] ?? []);
 
             if ($action instanceof BulkAction) {
+                // $records and the query select the same rows: the cleaned, capped ids.
                 $action->records(fn () => $board->findRecords($ids()));
-                $action->recordsQuery(fn () => $board->baseQuery()->whereKey($ids()));
+                $action->recordsQuery(fn () => $board->baseQuery()->whereKey(Board::selectionIds($ids())));
             }
 
             if ($action->getModel(withDefault: false) === null) {

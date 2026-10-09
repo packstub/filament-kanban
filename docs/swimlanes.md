@@ -16,7 +16,7 @@ With only the attribute, the lanes are the attribute's distinct values on the bo
 
 Derived lanes follow the data: a lane with no cards left disappears on the next refresh, and the first card with a new value adds one. An empty board shows the "Unassigned" lane alone, so there is somewhere to drop. When the attribute is cast to a backed enum on the model, the labels and colours come from its `HasLabel` and `HasColor`.
 
-Derive lanes from an attribute with a handful of values (a priority, a type, a team). Every lane costs a query per column that holds cards, so a lane per customer on a six-column board is hundreds of queries; past 50 derived values the rest fold into an "Other" lane. For many values, define the lanes you want to show.
+Derive lanes from an attribute with a handful of values (a priority, a type, a team). A column loads all its lanes in one query (a window function; MySQL before 8 has none and gets a query per lane), but every lane is a row on screen and in the counts; past 50 derived values the rest fold into an "Other" lane. For many values, define the lanes you want to show.
 
 ## Defined lanes
 
@@ -36,7 +36,9 @@ use Packstub\Kanban\Lane;
 
 A closure returning the lanes is evaluated once per request, so it can depend on the user. Labels and colours take closures too.
 
-Cards whose value is not among the defined lanes (and `null` ones) are shown in an "Unassigned" lane, added while the board holds such cards. Define `Lane::make('')` (the empty value, `Lane::UNASSIGNED`) yourself to give it a label or keep it always visible. A card keeps its own value while it moves inside that row; a drop *into* the "Unassigned" (or "Other") row writes `null`.
+Cards whose value is not among the defined lanes (and `null` ones) are shown in an "Unassigned" lane, added while the board holds such cards. Define `Lane::make('')` (the empty value, `Lane::UNASSIGNED`) yourself to give it a label or keep it always visible. A card keeps its own value while it moves inside that row; a drop *into* the "Unassigned" row writes `null`. The "Other" row of capped derived lanes holds many values, so it takes no card from another row (`Lane::droppable(false)`); a card already in it moves between columns as usual.
+
+A card's lane is read from the attribute's stored value, the one the counts group by, not from its cast: a `boolean` cast gives the lanes `'0'` and `'1'`.
 
 ## What a drop does
 
@@ -44,7 +46,7 @@ A card dropped in another lane gets that lane's value as well as the column's: t
 
 Every column rule applies unchanged. A WIP limit counts the whole column across lanes; the column header's count is the column's, each lane header shows its own.
 
-`moveUsing()` receives the lane change fourth, when the board has swimlanes: `null` means the lane did not change (a move inside the row, a "Move to…" from the card's menu, a bulk move), `''` (`Lane::UNASSIGNED`) means the card moved to the unassigned lane, anything else is the new lane's value.
+`moveUsing()` receives the lane change fourth, when the board has swimlanes and the closure takes a fourth parameter: `null` means the lane did not change (a move inside the row, a "Move to…" from the card's menu, a bulk move), `''` (`Lane::UNASSIGNED`) means the card moved to the unassigned lane, anything else is the new lane's value.
 
 ```php
 ->moveUsing(function (Task $task, string $to, string $from, ?string $lane) {
@@ -54,6 +56,8 @@ Every column rule applies unchanged. A WIP limit counts the whole column across 
     ]);
 })
 ```
+
+A closure with three parameters (written before the board had lanes) is left as it was: the board sets the lane attribute itself and saves it after the closure, and a lane change inside one column does not call the closure at all.
 
 `CardMoved::$lane` carries the same value.
 

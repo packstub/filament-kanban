@@ -110,6 +110,8 @@ trait InteractsWithKanban
             return ['ok' => false, 'moved' => [], 'refused' => [], 'summaries' => [], 'message' => __('packstub-kanban::kanban.bulk_limit', ['max' => Board::MAX_SELECTION])];
         }
 
+        $board->findRecords($ids); // one query for every card; move() reads them from there
+
         foreach (Board::selectionIds($ids) as $id) {
             $from = $board->findRecord($id)?->getAttribute($board->getColumnAttribute());
             $columns[] = (string) ($from instanceof \BackedEnum ? $from->value : $from);

@@ -22,9 +22,12 @@ class Lane
 
     protected string|Closure|null $label = null;
 
-    protected string|Closure|null $color = null;
+    /** @var string|array<int|string, string>|Closure|null */
+    protected string|array|Closure|null $color = null;
 
     protected bool|Closure $collapsed = false;
+
+    protected bool $droppable = true;
 
     protected string $value;
 
@@ -74,7 +77,7 @@ class Lane
     }
 
     /** A Tailwind-ish name (gray, sky, amber…) or any CSS colour, drawn as a dot before the lane's label. */
-    public function color(string|Closure|null $color): static
+    public function color(string|array|Closure|null $color): static
     {
         $this->color = $color;
 
@@ -87,6 +90,19 @@ class Lane
         $this->collapsed = $condition;
 
         return $this;
+    }
+
+    /** Whether cards may be dropped into this lane from another one (the derived "Other" lane may not). */
+    public function droppable(bool $condition = true): static
+    {
+        $this->droppable = $condition;
+
+        return $this;
+    }
+
+    public function isDroppable(): bool
+    {
+        return $this->droppable;
     }
 
     public function getValue(): string
@@ -116,7 +132,7 @@ class Lane
 
     public function getColor(): ?string
     {
-        return $this->evaluate($this->color);
+        return Column::colorFromFilament($this->evaluate($this->color));
     }
 
     public function isCollapsed(): bool
@@ -124,7 +140,7 @@ class Lane
         return (bool) $this->evaluate($this->collapsed);
     }
 
-    /** @return array{value: string, label: string, color: ?string, collapsed: bool} */
+    /** @return array{value: string, label: string, color: ?string, collapsed: bool, droppable: bool} */
     public function toArray(): array
     {
         return [
@@ -132,6 +148,7 @@ class Lane
             'label' => $this->getLabel(),
             'color' => $this->getColor(),
             'collapsed' => $this->isCollapsed(),
+            'droppable' => $this->isDroppable(),
         ];
     }
 
