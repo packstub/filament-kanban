@@ -77,7 +77,7 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::channel('kanban.{board}', fn (User $user) => $user->can('viewAny', Deal::class));
 ```
 
-The default channel is shared by everyone who may see the page, tenants included: a change in one tenant's board reloads the others' tabs (they only reload their own, scoped query, so nothing leaks, but the reloads are wasted). On a multi-tenant app give the channel the tenant and authorise it as such:
+The default channel is shared by everyone who may see the page, tenants included: a change in one tenant's board reloads the other tenants' tabs (wasted requests, each through its own scoped query), and the event's payload (the record's id, the column names) reaches their browsers. On a multi-tenant app give the channel the tenant and authorise it as such:
 
 ```php
 ->broadcast(fn () => 'tenant.'.Filament::getTenant()->getKey().'.kanban')
@@ -85,7 +85,7 @@ The default channel is shared by everyone who may see the page, tenants included
 Broadcast::channel('tenant.{tenant}.kanban', fn (User $user, string $tenant) => $user->belongsToTenant($tenant));
 ```
 
-**The queue.** `BoardChanged` implements `ShouldBroadcast`: it is queued, on your `QUEUE_CONNECTION`, once the transaction that made the change commits, so a worker must run (`php artisan queue:work`; with `QUEUE_CONNECTION=database` and no worker nothing is ever sent). `BROADCAST_CONNECTION` picks the broadcaster (`reverb`, `pusher`, `ably`; `log` is handy while setting up). `broadcastNow()` skips the queue: the event goes out during the request, which is simpler and fine for a small team, but a broadcaster that is down then costs every move its timeout. Either way, a failing broadcast never fails the change: it is saved by then, the failure is reported to your exception handler, and the move answers "ok".
+**The queue.** `BoardChanged` implements `ShouldBroadcast`: it is queued, on your `QUEUE_CONNECTION`, once the transaction that made the change commits (`DB::afterCommit()`, so an action with `databaseTransaction()` never broadcasts a change that is rolled back), so a worker must run (`php artisan queue:work`; with `QUEUE_CONNECTION=database` and no worker nothing is ever sent). `BROADCAST_CONNECTION` picks the broadcaster (`reverb`, `pusher`, `ably`; `log` is handy while setting up). `broadcastNow()` skips the queue: the event goes out during the request, which is simpler and fine for a small team, but a broadcaster that is down then costs every move its timeout. Either way, a failing broadcast never fails the change: it is saved by then, the failure is reported to your exception handler, and the move answers "ok".
 
 The event is broadcast as `kanban.changed` (Echo's `.kanban.changed`, the leading dot added for you if you leave it out) and carries `board` (the key), `id`, `from`, `to` and `origin`, so your own listener (`Echo.private('kanban.deals').listen('.kanban.changed', ...)`) can use it too. Without Echo on the page the option does nothing; `poll()` keeps working, and both may be set. `CardMoved` is unchanged: it stays the event your server-side listeners use.
 

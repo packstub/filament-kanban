@@ -7,8 +7,8 @@ use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
-use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
@@ -293,12 +293,11 @@ it('broadcasts on a private channel named after the key unless told otherwise, w
         ->and($event->broadcastOn()->name)->toBe('private-tenant.7.kanban')
         ->and($event->broadcastAs())->toBe('kanban.changed')
         ->and($event->broadcastWith())->toBe(['board' => 'deals', 'id' => '3', 'from' => 'todo', 'to' => 'doing', 'origin' => 'tab1'])
-        ->and($event)->toBeInstanceOf(ShouldDispatchAfterCommit::class)
         ->and(new BoardChangedNow('c', 'e'))->toBeInstanceOf(ShouldBroadcastNow::class);
 });
 
-it('keeps a move saved when the broadcaster is down: the failure is reported, the move answers ok', function () {
-    Exceptions::fake();
+function brokenBroadcaster(): void
+{
     config()->set('queue.default', 'sync');
     config()->set('broadcasting.default', 'down');
     config()->set('broadcasting.connections.down', ['driver' => 'down']);
@@ -313,6 +312,11 @@ it('keeps a move saved when the broadcaster is down: the failure is reported, th
             throw new BroadcastException('Connection refused');
         }
     });
+}
+
+it('keeps a move saved when the broadcaster is down: the failure is reported, the move answers ok', function () {
+    Exceptions::fake();
+    brokenBroadcaster();
     $task = task('Build');
 
     $board = board()->broadcastNow('team.1.kanban');
@@ -339,6 +343,31 @@ it('keeps a move saved when the broadcaster is down: the failure is reported, th
         ->and($task->fresh()->priority)->toBe(1);
     Exceptions::assertReportedCount(3);
 });
+
+it('broadcasts once the transaction commits, and a broadcaster down inside one is still only reported', function (bool $now) {
+    Exceptions::fake();
+    brokenBroadcaster();
+    $task = task('Build');
+    $board = board()->broadcast('team.1.kanban', now: $now);
+
+    DB::transaction(function () use ($board, $task) {
+        $board->move((string) $task->id, 'doing');
+        $board->broadcastChange((string) $task->id, 'todo', 'doing', 'tab1');
+
+        Exceptions::assertNothingReported(); // not before the commit
+    });
+
+    Exceptions::assertReported(BroadcastException::class);
+
+    expect($task->fresh()->status)->toBe('doing');
+
+    Exceptions::fake();
+    DB::transaction(function () use ($board, $task) {
+        $board->broadcastChange((string) $task->id, 'todo', 'doing', 'tab1');
+
+        throw new RuntimeException('rolled back');
+    });
+})->with(['queued' => false, 'now' => true])->throws(RuntimeException::class, 'rolled back');
 
 it('offers an undo for five seconds unless told otherwise', function () {
     expect(board()->getUndo())->toBe(5)

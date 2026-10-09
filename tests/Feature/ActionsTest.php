@@ -7,6 +7,7 @@ use Packstub\Kanban\Actions\ColumnAction;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Column;
 use Packstub\Kanban\Events\BoardChanged;
+use Packstub\Kanban\Tests\Fixtures\ArchiveColumnAction;
 use Packstub\Kanban\Tests\Fixtures\PlainBoard;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
@@ -41,36 +42,64 @@ it('offers each column its actions, named after the column, with the column inje
         ->and($config['columns'][2]['actions'][0])->toMatchArray(['name' => 'column:done:archive', 'label' => 'Archive Done']);
 });
 
-it('gives each column its own copy of a shared action object, and leaves out the ones the app hides', function () {
-    $shared = ColumnAction::make('clear')->visible(fn (Column $column) => $column->getName() !== 'doing')->action(fn (Builder $query) => $query->delete());
+it('copies an action object shared by several columns, and leaves out the ones the app hides', function () {
     $component = new class extends TaskBoard
     {
         public static ?ColumnAction $shared = null;
 
         public function kanban(Board $board): Board
         {
+            // Built per request, as an app's kanban() does; kept in a static for the assertions below.
+            self::$shared = ColumnAction::make('clear')->visible(fn (Column $column) => $column->getName() !== 'doing')->action(fn (Builder $query) => $query->delete());
+
             return parent::kanban($board)->columns([
                 Column::make('todo')->actions([self::$shared]),
                 Column::make('doing')->actions([self::$shared, ColumnAction::make('secret')->authorize(false)]),
             ]);
         }
     };
-    $component::$shared = $shared;
     $todo = task('A', 'todo');
     $doing = task('B', 'doing');
 
     $test = Livewire::test($component::class);
     $config = $test->instance()->getKanbanConfig();
+    $columns = $test->instance()->getKanban()->getAllColumns();
 
     expect(array_column($config['columns'][0]['actions'], 'name'))->toBe(['column:todo:clear'])
         ->and($config['columns'][1]['actions'])->toBe([])
-        ->and($shared->getName())->toBe('clear'); // the app's object is left alone
+        ->and($columns[0]->getActions()[0])->toBe($component::$shared) // the first column keeps the object
+        ->and($columns[1]->getActions()[0])->not->toBe($component::$shared) // the second gets a copy
+        ->and($columns[1]->getActions()[0]->getName())->toBe('column:doing:clear');
 
     $test->callAction('column:todo:clear', arguments: ['kanbanColumn' => 'todo'])
         ->assertActionHidden('column:doing:clear', ['kanbanColumn' => 'doing']);
 
     expect(Task::find($todo->id))->toBeNull()
         ->and($doing->fresh())->not->toBeNull();
+});
+
+it('keeps an action of its own as it is, so closures bound in setUp() through $this still work', function () {
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->columns([
+                Column::make('todo')->actions([ArchiveColumnAction::make('archive')]),
+                Column::make('done')->actions([ArchiveColumnAction::make('archive')->databaseTransaction()]),
+            ]);
+        }
+    };
+    $todo = task('A', 'todo');
+    $done = task('B', 'done');
+
+    Livewire::test($component::class)
+        ->callAction('column:todo:archive', arguments: ['kanbanColumn' => 'todo'])
+        ->assertHasNoErrors()
+        ->callAction('column:done:archive', arguments: ['kanbanColumn' => 'done'])
+        ->assertHasNoErrors();
+
+    expect($todo->fresh()->status)->toBe('archived')
+        ->and($done->fresh()->status)->toBe('archived');
 });
 
 it('shrugs off arguments of the wrong type', function () {

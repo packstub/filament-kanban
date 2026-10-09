@@ -419,8 +419,9 @@ class Board
 
     /**
      * Tell the other tabs (when the board broadcasts): the origin is the token of the tab
-     * that made the change, which ignores it. The change is saved by now, so a broadcaster
-     * that is down (reported) must not make it look failed.
+     * that made the change, which ignores it. Sent once the transaction that made the
+     * change commits (at once when none is open); a broadcaster that is down is reported
+     * and never makes the saved change look failed.
      */
     public function broadcastChange(?string $id = null, ?string $from = null, ?string $to = null, ?string $origin = null): void
     {
@@ -429,8 +430,12 @@ class Board
         }
 
         $event = $this->broadcastNow ? BoardChangedNow::class : BoardChanged::class;
+        $channel = $this->getBroadcastChannel();
 
-        rescue(fn () => $event::dispatch($this->getBroadcastChannel(), $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin), report: true);
+        DB::afterCommit(fn () => rescue(
+            fn () => $event::dispatch($channel, $this->getBroadcastEvent(), $this->key, $id, $from, $to, $origin),
+            report: true,
+        ));
     }
 
     /** @return class-string<Model> */

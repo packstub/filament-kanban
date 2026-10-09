@@ -118,6 +118,7 @@ trait InteractsWithKanban
         $summaries = [];
 
         foreach ($this->getKanban()->getColumn($columnName)?->getActions() ?? [] as $action) {
+            $previous = $action->hasArguments() ? $action->getArguments() : null;
             $action->arguments(['kanbanColumn' => $columnName]);
 
             try {
@@ -125,7 +126,7 @@ trait InteractsWithKanban
                     $summaries[] = $this->kanbanActionSummary($action);
                 }
             } finally {
-                $action->resetArguments();
+                $action->arguments($previous);
             }
         }
 

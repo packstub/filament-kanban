@@ -377,7 +377,13 @@ export default function packstubKanban(config) {
             const loaded = background ? Object.fromEntries(this.columns.map((c) => [c.name, c.cards.length])) : {}
 
             this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
-                if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
+                if (seq !== this.refreshSeq || ! result) {
+                    return
+                }
+
+                // A drag started meanwhile: keep the answer for after the drop (see settle()).
+                if (background && (this.dragging || this.pending)) {
+                    this.stale = true
                     return
                 }
 

@@ -5,6 +5,7 @@ namespace Packstub\Kanban\Concerns;
 use Closure;
 use Filament\Actions\Action;
 use Packstub\Kanban\Actions\ColumnAction;
+use SplObjectStorage;
 
 /**
  * Registers the board's card and create actions with Filament's action system, on
@@ -49,12 +50,26 @@ trait KanbanActions
             $this->cacheAction($action);
         }
 
+        // An action object given to several columns is copied for every column but the first,
+        // before any of them is touched; an action of its own is used as it is, so closures
+        // bound in setUp() keep their $this.
+        $seen = new SplObjectStorage;
+
+        foreach ($board->getAllColumns() as $column) {
+            $column->actions(array_map(function (Action $action) use ($seen) {
+                if ($seen->contains($action)) {
+                    return clone $action;
+                }
+
+                $seen->attach($action);
+
+                return $action;
+            }, $column->getActions()));
+        }
+
         // Column actions are cached as `column:<column>:<name>`, so two columns may share a
         // name; hidden columns' actions are registered too and hidden, like a card off the board.
-        // Each column gets its own copy, so one action object may be given to several columns.
         foreach ($board->getAllColumns() as $column) {
-            $column->actions(array_map(fn (Action $action) => clone $action, $column->getActions()));
-
             foreach ($column->getActions() as $action) {
                 if ($action instanceof ColumnAction) {
                     $action->board($board)->column($column);
