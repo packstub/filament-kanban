@@ -269,6 +269,12 @@ it('reads the poll interval', function (string|int|null $interval, ?int $ms) {
     ['10s', 10000], ['1m', 60000], ['2500ms', 2500], [5000, 5000], [10, 1000], [null, null],
 ]);
 
+it('sets the default density and refuses an unknown one', function () {
+    expect(board()->getDensity())->toBe('comfortable')
+        ->and(board()->density('compact')->getDensity())->toBe('compact')
+        ->and(fn () => board()->density('cozy'))->toThrow(InvalidArgumentException::class);
+});
+
 it('shapes avatars and the actions a card offers', function () {
     $card = Card::make()->title('A')->avatar('https://acme.test/a.png', 'Ana Pop')->avatar(null, 'Dan Ionescu')->avatar(null)->actions([]);
 

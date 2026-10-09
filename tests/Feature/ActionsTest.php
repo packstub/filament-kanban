@@ -17,7 +17,8 @@ it('offers the card actions, the click action and the create action to the brows
     expect(array_column($config['cardActions'], 'name'))->toBe(['edit', 'delete', 'bump'])
         ->and($config['cardActions'][1]['color'])->toBe('danger')
         ->and($config['cardAction'])->toBe('edit')
-        ->and($config['createAction']['name'])->toBe('create');
+        ->and($config['createAction']['name'])->toBe('create')
+        ->and($config['density'])->toBe('comfortable');
 });
 
 it('offers no actions on a component without Filament\'s action system', function () {

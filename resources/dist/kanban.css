@@ -47,6 +47,9 @@
 /* The view hides the board inline until this file applies (see board.blade.php). */
 div.pk { visibility: visible; }
 .pk [x-cloak] { display: none !important; }
+
+/* announcements for screen readers: present in the tree, never on screen */
+.pk-live { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 .pk svg, .sortable-fallback.pk-card svg { width: 1rem; height: 1rem; flex: none; }
 
 /* ------------------------------------------------------------------ toolbar */
@@ -78,7 +81,8 @@ div.pk { visibility: visible; }
 .pk-btn { padding: 0 0.7rem; cursor: pointer; }
 .pk-icon-btn { justify-content: center; width: 2.125rem; padding: 0; cursor: pointer; }
 .pk-btn:hover, .pk-icon-btn:hover { border-color: var(--pk-card-hover); color: var(--pk-text); }
-.pk-btn:focus-visible, .pk-icon-btn:focus-visible, .pk-card-link:focus-visible, .pk-more:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-btn:focus-visible, .pk-icon-btn:focus-visible, .pk-card-link:focus-visible, .pk-more:focus-visible, .pk-menu-item:focus-visible, .pk-tab:focus-visible { outline: 2px solid var(--pk-ring); outline-offset: 1px; }
+.pk-density-btn[aria-pressed="true"] { color: var(--pk-text); border-color: var(--pk-card-hover); }
 .pk-btn-count { color: var(--pk-muted); font-variant-numeric: tabular-nums; }
 
 .pk-search { padding: 0 0.6rem; min-width: min(20rem, 100%); color: var(--pk-muted); }
@@ -379,6 +383,53 @@ div.pk { visibility: visible; }
     .pk-card-flash { animation: none; }
     .pk-drag { transform: none; }
 }
+
+/* ------------------------------------------------------------------ compact density */
+
+.pk-compact { --pk-gap: 0.5rem; }
+.pk-compact .pk-cards { gap: 0.25rem; padding: 0.125rem 0.375rem 0.375rem; }
+.pk-compact .pk-card-link { gap: 0.15rem; padding: 0.4rem 0.55rem 0.45rem; }
+.pk-compact .pk-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pk-compact .pk-card-menu { top: 0.2rem; }
+
+/* ------------------------------------------------------------------ narrow screens: column tabs */
+
+/* The root gets .pk-narrow from the same media query as below (see init()); the tab bar
+   and the one-column layout hang off it, so the script and the stylesheet never disagree. */
+.pk-tabs {
+    display: none;
+    gap: 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.pk-tabs::-webkit-scrollbar { display: none; }
+.pk-narrow .pk-tabs { display: flex; }
+
+.pk-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2.125rem;
+    padding: 0 0.7rem;
+    border: 1px solid transparent;
+    border-radius: var(--pk-card-radius);
+    color: var(--pk-soft);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.pk-tab-count { color: var(--pk-muted); font-variant-numeric: tabular-nums; }
+.pk-tab-on { border-color: var(--pk-card-border); background: var(--pk-card-bg); color: var(--pk-text); }
+
+.pk-narrow .pk-col:not(.pk-col-tab) { display: none; }
+.pk-narrow .pk-col-tab { flex: 1 1 100%; min-width: 0; }
+.pk-narrow .pk-fold { display: none; }
 
 /* ------------------------------------------------------------------ focus mode (no sidebar) */
 

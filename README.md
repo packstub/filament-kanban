@@ -23,6 +23,7 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 - **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
 - **[Search, filters and paging](#search-filters-and-paging)**: instant search, select filters and infinite scroll per column.
 - **[Events](https://packstub.dev/docs/filament-kanban/moves)**: a `CardMoved` event, browser events and polling for shared boards.
+- **[Keyboard, screen readers and phones](https://packstub.dev/docs/filament-kanban/configuration#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
 - **Dark mode and translations**: English, Romanian, Russian and German included.
 
 ## Compatibility

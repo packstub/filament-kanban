@@ -61,6 +61,8 @@ class Board
 
     protected ?int $poll = null;
 
+    protected string $density = 'comfortable';
+
     /** @var list<Column>|null */
     protected ?array $resolvedColumns = null;
 
@@ -236,6 +238,20 @@ class Board
         return $this;
     }
 
+    /**
+     * How tight the cards are drawn by default: 'comfortable' or 'compact' (smaller
+     * padding, one-line titles). A toggle in the toolbar lets each user override it.
+     */
+    public function density(string $density): static
+    {
+        in_array($density, ['comfortable', 'compact'], true)
+            ?: throw new \InvalidArgumentException("Unknown density [{$density}]: use 'comfortable' or 'compact'.");
+
+        $this->density = $density;
+
+        return $this;
+    }
+
     /** Where the browser remembers folded and hidden columns; defaults to the page's class. */
     public function key(string $key): static
     {
@@ -321,6 +337,11 @@ class Board
     public function getPoll(): ?int
     {
         return $this->poll;
+    }
+
+    public function getDensity(): string
+    {
+        return $this->density;
     }
 
     /** @return class-string<Model> */

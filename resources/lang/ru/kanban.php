@@ -21,4 +21,10 @@ return [
     'card_menu' => 'Действия с карточкой',
     'limit' => 'Лимит: :limit карточек',
     'full' => 'Колонка «:column» заполнена (лимит :limit).',
+    'column_label' => ':label, карточек: :count',
+    'moved_to' => 'Перемещено в :column',
+    'loaded_more' => 'Загружено ещё карточек: :count',
+    'matches_count' => 'Подходящих карточек: :count',
+    'compact' => 'Компактно',
+    'comfortable' => 'Просторно',
 ];

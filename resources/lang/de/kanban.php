@@ -21,4 +21,10 @@ return [
     'card_menu' => 'Kartenaktionen',
     'limit' => 'Limit: :limit Karten',
     'full' => ':column ist voll (Limit :limit).',
+    'column_label' => ':label, :count Karten',
+    'moved_to' => 'Verschoben nach :column',
+    'loaded_more' => ':count weitere Karten geladen',
+    'matches_count' => ':count Karten passen',
+    'compact' => 'Kompakt',
+    'comfortable' => 'Komfortabel',
 ];

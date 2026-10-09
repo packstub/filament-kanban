@@ -35,6 +35,9 @@ export default function packstubKanban(config) {
         dragging: null,
         menu: null,
         sidebar: false,
+        density: config.density || 'comfortable',
+        narrow: false, // below 64rem: one column at a time, picked from a tab bar
+        tab: null,
         refreshTimer: null,
         refreshSeq: 0,
         pending: 0,
@@ -66,6 +69,15 @@ export default function packstubKanban(config) {
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
 
+            // The same breakpoint as the stylesheet's; the class on the root keeps both in step.
+            this.media = window.matchMedia ? window.matchMedia('(max-width: 63.999rem)') : null
+            this.narrow = !! this.media?.matches
+            this.onMedia = (event) => {
+                this.narrow = event.matches
+                this.$nextTick(this.fit)
+            }
+            this.media?.addEventListener?.('change', this.onMedia)
+
             // Pick up other people's changes, but never while a card is in the air.
             if (config.poll) {
                 this.poller = setInterval(() => {
@@ -79,6 +91,7 @@ export default function packstubKanban(config) {
         destroy() {
             window.removeEventListener('keydown', this.onSlash)
             window.removeEventListener('resize', this.fit)
+            this.media?.removeEventListener?.('change', this.onMedia)
             clearInterval(this.poller)
             this.moreObserver?.disconnect()
             document.body.classList.remove('pk-focus-sidebar')
@@ -181,6 +194,11 @@ export default function packstubKanban(config) {
             this.pending++
             const order = config.reorderable ? target.cards.map((c) => c.id) : null
 
+            // A keyboard user keeps their place: the card is drawn again (in another
+            // column, or back where it was), so focus follows it by id.
+            const focused = document.activeElement?.closest?.('.pk-card')?.dataset.id === id
+            if (focused) this.refocus(id)
+
             const undo = (message) => {
                 const now = target.cards.findIndex((c) => c.id === id)
                 if (now >= 0) target.cards.splice(now, 1)
@@ -188,6 +206,8 @@ export default function packstubKanban(config) {
                 shift(-1)
                 card._pending = false
                 this.notify(message, 'danger')
+                this.announce(message)
+                if (focused) this.refocus(id)
             }
 
             this.$wire.kanbanMove(id, to, order, this.search, this.active)
@@ -203,6 +223,7 @@ export default function packstubKanban(config) {
 
                     if (from !== to) {
                         this.$dispatch('kanban-card-moved', { id, from, to, card: result.card })
+                        this.announce(this.t.moved_to.replace(':column', target.label))
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)
@@ -268,6 +289,80 @@ export default function packstubKanban(config) {
             return this.columns.filter((c) => c.name !== from && ! this.hidden.includes(c.name) && this.canDrop(from, c.name))
         },
 
+        /* ------------------------------------------------------------ keyboard */
+
+        // One handler per column list: arrows walk the visible cards, Home/End jump,
+        // Enter opens, Shift+F10 or the menu key opens the card's menu; inside an open
+        // menu the arrows walk its items and Escape returns to the card.
+        keys(event, column) {
+            const item = event.target.closest('.pk-card')
+            if (! item || event.altKey || event.ctrlKey || event.metaKey) return
+
+            const link = item.querySelector(':scope > .pk-card-link')
+            const menu = event.target.closest('.pk-menu')
+
+            if (menu) {
+                if (event.key === 'Escape') {
+                    this.menu = null
+                    return link?.focus()
+                }
+                const items = [...menu.querySelectorAll('.pk-menu-item')]
+                const at = items.indexOf(event.target)
+                const next = { ArrowDown: items[(at + 1) % items.length], ArrowUp: items[(at - 1 + items.length) % items.length], Home: items[0], End: items[items.length - 1] }[event.key]
+                if (next) {
+                    event.preventDefault()
+                    next.focus()
+                }
+                return
+            }
+
+            if (event.target !== link) return
+
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+                const links = [...event.currentTarget.querySelectorAll(':scope > .pk-card > .pk-card-link')].filter((l) => l.offsetParent)
+                const at = links.indexOf(link)
+                const to = event.key === 'ArrowDown' ? at + 1 : event.key === 'ArrowUp' ? at - 1 : event.key === 'Home' ? 0 : links.length - 1
+                if (links[to]) {
+                    event.preventDefault()
+                    links[to].focus()
+                }
+            } else if ((event.key === 'Enter' || event.key === ' ') && ! link.hasAttribute('href')) {
+                // An anchor without href is not activated by the keyboard on its own.
+                event.preventDefault()
+                link.click()
+            } else if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+                const card = column.cards.find((c) => c.id === item.dataset.id)
+                if (card && this.hasMenu(card, column)) {
+                    event.preventDefault()
+                    this.openMenu(card)
+                }
+            }
+        },
+
+        openMenu(card) {
+            const key = 'card:' + card.id
+            this.menu = this.menu === key ? null : key
+            if (this.menu) {
+                this.$nextTick(() => this.$root.querySelector(`.pk-card[data-id="${CSS.escape(card.id)}"] .pk-menu-item`)?.focus())
+            }
+        },
+
+        refocus(id) {
+            this.$nextTick(() => this.$root.querySelector(`.pk-card[data-id="${CSS.escape(id)}"] > .pk-card-link`)?.focus())
+        },
+
+        // The live region reads a text once; cleared first so the same text is read again.
+        announce(text) {
+            const live = this.$refs.live
+            if (! live || ! text) return
+            live.textContent = ''
+            setTimeout(() => { live.textContent = text }, 50)
+        },
+
+        columnLabel(column) {
+            return this.t.column_label.replace(':label', column.label).replace(':count', column.count)
+        },
+
         /* ------------------------------------------------------------ search, filters, paging */
 
         matches(card) {
@@ -319,6 +414,10 @@ export default function packstubKanban(config) {
                         column.summary = fresh.summary
                     }
                 }
+
+                if (! background && this.search.trim()) {
+                    this.announce(this.t.matches_count.replace(':count', result.columns.reduce((sum, c) => sum + (c.count || 0), 0)))
+                }
             })
         },
 
@@ -344,7 +443,9 @@ export default function packstubKanban(config) {
             this.$wire.kanbanMore(column.name, column.cards.length, this.search, this.active)
                 .then((cards) => {
                     const known = new Set(column.cards.map((c) => c.id))
-                    column.cards.push(...(cards || []).filter((c) => ! known.has(c.id)))
+                    const fresh = (cards || []).filter((c) => ! known.has(c.id))
+                    column.cards.push(...fresh)
+                    this.announce(this.t.loaded_more.replace(':count', fresh.length))
                 })
                 .finally(() => {
                     this.loading[column.name] = false
@@ -377,6 +478,46 @@ export default function packstubKanban(config) {
             this.persist()
         },
 
+        toggleDensity() {
+            this.density = this.density === 'compact' ? 'comfortable' : 'compact'
+            this.persist()
+        },
+
+        /* ------------------------------------------------------------ narrow screens: one column at a time */
+
+        // The selected tab, falling back to the first visible column when it is hidden or gone.
+        currentTab() {
+            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
+
+            return visible.some((c) => c.name === this.tab) ? this.tab : (visible[0]?.name ?? null)
+        },
+
+        selectTab(name) {
+            this.tab = name
+            this.persist()
+            this.$nextTick(() => this.$refs.tabs?.querySelector('.pk-tab-on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
+        },
+
+        // A sideways swipe over the board goes to the next or previous column; never while a card is in the air.
+        swipeStart(event) {
+            const touch = event.touches?.[0]
+            this.swipe = touch ? { x: touch.clientX, y: touch.clientY } : null
+        },
+
+        swipeEnd(event) {
+            const start = this.swipe
+            const touch = event.changedTouches?.[0]
+            this.swipe = null
+            if (! start || ! touch || ! this.narrow || this.dragging) return
+
+            const dx = touch.clientX - start.x
+            if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(touch.clientY - start.y)) return
+
+            const visible = this.columns.filter((c) => ! this.hidden.includes(c.name))
+            const next = visible[visible.findIndex((c) => c.name === this.currentTab()) + (dx < 0 ? 1 : -1)]
+            if (next) this.selectTab(next.name)
+        },
+
         restore() {
             for (const column of this.columns) {
                 this.folded[column.name] = !! column.collapsed
@@ -389,13 +530,15 @@ export default function packstubKanban(config) {
                     Object.assign(this.folded, Object.fromEntries(Object.entries(saved.folded || {}).filter(([n]) => names.includes(n))))
                     this.hidden = (saved.hidden || []).filter((n) => names.includes(n))
                     this.sidebar = !! saved.sidebar
+                    if (saved.density === 'compact' || saved.density === 'comfortable') this.density = saved.density
+                    if (names.includes(saved.tab)) this.tab = saved.tab
                 }
             } catch (e) {}
         },
 
         persist() {
             try {
-                localStorage.setItem(config.key, JSON.stringify({ folded: this.folded, hidden: this.hidden, sidebar: this.sidebar }))
+                localStorage.setItem(config.key, JSON.stringify({ folded: this.folded, hidden: this.hidden, sidebar: this.sidebar, density: this.density, tab: this.tab }))
             } catch (e) {}
         },
 

@@ -21,4 +21,10 @@ return [
     'card_menu' => 'Acțiuni card',
     'limit' => 'Limită: :limit carduri',
     'full' => ':column este plină (limita :limit).',
+    'column_label' => ':label, :count carduri',
+    'moved_to' => 'Mutat în :column',
+    'loaded_more' => 'Încă :count carduri încărcate',
+    'matches_count' => ':count carduri se potrivesc',
+    'compact' => 'Compact',
+    'comfortable' => 'Confortabil',
 ];

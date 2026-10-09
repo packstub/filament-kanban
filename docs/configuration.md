@@ -22,6 +22,7 @@ public function kanban(Board $board): Board
         ->perColumn(50)                                    // cards per column before "Load more"
         ->poll('30s')                                      // pick up other people's changes
         ->focusMode(false)                                 // keep the panel's sidebar
+        ->density('compact')                               // tighter cards by default; a toggle lets users choose
         ->key('deals');                                    // where the browser keeps folded / hidden columns
 }
 ```
@@ -58,9 +59,23 @@ Each column loads `perColumn()` cards (50 by default). The rest come in pages as
 
 The board page hides the panel's sidebar so the columns get the whole width; a button in the toolbar brings it back (remembered per user). `focusMode(false)` keeps the sidebar.
 
+## Density
+
+A toggle in the toolbar switches between **Comfortable** and **Compact**: compact cards have smaller padding, one-line titles and a tighter column gap, for boards with hundreds of cards. `density('compact')` makes compact the default; a user's choice is remembered and wins over it.
+
+## Keyboard
+
+Every card is reachable with Tab, a card with a `url()` as a link, one without as a button. Inside a column, Arrow Up and Arrow Down move between the visible cards, Home and End jump to the first and the last. Enter opens the card (its url, or the click action); Shift+F10 or the menu key opens the card's menu, where the arrows walk the actions and the "Move to…" targets and Escape returns to the card. `/` focuses the search box.
+
+Columns are regions labelled with their name and count, and a visually hidden live region announces what the browser did: "Moved to Done", the reason a move was refused, "Loaded 50 more cards", "12 cards match" after a search. After a move or a refusal, focus stays on the card.
+
+## Narrow screens
+
+Below 64rem (a phone, a narrow tablet) the board shows one column at a time, at full width, picked from a tab bar above it (name, dot and count per column). A sideways swipe over the board goes to the next or previous column; the selected column is remembered with the other preferences. Dragging works inside the column; "Move to…" in the card menu moves a card to another column. The desktop layout above the breakpoint is unchanged.
+
 ## Remembered per user
 
-Folded and hidden columns and the sidebar toggle are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
+Folded and hidden columns, the sidebar toggle, the density and the selected column on narrow screens are kept in the browser's local storage under the board's `key()` and the user's id. Give two pages showing the same board the same key to share them.
 
 ## Styling
 
@@ -106,6 +121,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
 | `focusMode(bool)` | `true` | Hide the sidebar on the board page. |
+| `density(string)` | `'comfortable'` | `'compact'` for tighter cards by default; the user's toggle wins. |
 | `key(string)` | the page class | Where the browser keeps a user's view. |
 
 ### Column
