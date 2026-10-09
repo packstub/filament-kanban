@@ -52,7 +52,8 @@ class Filter
     /**
      * How a chosen value narrows the query. Default: `where(<name>, <value>)`, or
      * `whereIn(<name>, <values>)` for a multiple() filter. The closure gets the value
-     * (a string, a list of strings for multiple(), `true` for toggle()).
+     * as a string (an option key, `"3"` for an id), a list of strings for multiple(),
+     * `true` for toggle().
      */
     public function query(Closure $callback): static
     {
@@ -197,11 +198,11 @@ class Filter
     }
 
     /**
-     * The option keys among the given values, as the options spell them (an id offered
-     * as an int comes back an int even when the URL sent "3"), without duplicates.
+     * The option keys among the given values, as strings (what the browser and the URL
+     * send, what a select always passed), in the options' order, without duplicates.
      *
      * @param  list<mixed>  $values
-     * @return list<string|int>
+     * @return list<string>
      */
     protected function known(array $values): array
     {
@@ -211,22 +212,22 @@ class Filter
             return [];
         }
 
-        $options = $this->getOptions();
-        $known = [];
+        return array_map('strval', array_keys(array_intersect_key($this->getOptions(), array_flip(array_map('strval', $values)))));
+    }
 
-        foreach ($values as $value) {
-            if (! array_key_exists($value, $options)) {
-                continue;
-            }
-
-            foreach (array_keys($options) as $key) {
-                if ((string) $key === (string) $value && ! in_array($key, $known, true)) {
-                    $known[] = $key;
-                }
-            }
-        }
-
-        return $known;
+    /**
+     * What the browser holds for a value from the URL: one known option ('' for none)
+     * for a select, the known ones for a multiple(), on or off for a toggle().
+     *
+     * @return string|list<string>|bool
+     */
+    public function state(mixed $value): string|array|bool
+    {
+        return match ($this->type) {
+            'toggle' => ! blank($value) && $this->isOn($value),
+            'multiple' => blank($value) ? [] : $this->known(is_array($value) ? array_values($value) : [$value]),
+            default => blank($value) || is_array($value) ? '' : ($this->known([$value])[0] ?? ''),
+        };
     }
 
     protected function isOn(mixed $value): bool

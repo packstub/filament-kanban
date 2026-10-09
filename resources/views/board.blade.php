@@ -58,7 +58,7 @@
                 {{-- several options at once: a popover of checkboxes, the count on the button --}}
                 <template x-if="filter.type === 'multiple'">
                     <div>
-                        <button type="button" class="pk-filter pk-filter-btn" :class="{ 'pk-filter-on': isActive(filter) }" x-on:click.stop="menu = menu === 'filter:' + filter.name ? null : 'filter:' + filter.name" :aria-expanded="menu === 'filter:' + filter.name">
+                        <button type="button" class="pk-filter pk-filter-btn" :class="{ 'pk-filter-on': isActive(filter) }" x-on:click.stop="openFilter(filter, $el)" :aria-expanded="menu === 'filter:' + filter.name">
                             <span x-text="filter.label"></span>
                             <strong x-text="isActive(filter) ? active[filter.name].length : t.all"></strong>
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>

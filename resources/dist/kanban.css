@@ -101,6 +101,7 @@ div.pk { visibility: visible; }
 .pk-filter-toggle.pk-filter-on { background: color-mix(in oklab, var(--pk-ring) 10%, var(--pk-card-bg)); }
 .pk-filter-toggle.pk-filter-on span, .pk-filter-toggle.pk-filter-on svg { color: var(--pk-text); }
 .pk-menu-start { left: 0; }
+.pk-menu-start.pk-menu-end { left: auto; } /* flipped by openFilter() near the right edge */
 .pk-filter-menu { max-height: min(18rem, 60vh); overflow-y: auto; scrollbar-width: thin; }
 
 /* ------------------------------------------------------------------ menus */

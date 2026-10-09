@@ -139,6 +139,48 @@ it('tells the browser each filter\'s type and whether to keep the state in the U
     expect(Livewire::test($component::class)->instance()->getKanbanConfig()['url'])->toBeFalse();
 });
 
+it('draws a shared link filtered from the start, with what the URL says checked like any input', function () {
+    $acme = project('Acme');
+    task('Alpha', 'todo', ['project_id' => $acme->id, 'priority' => 9]);
+    task('Alps', 'todo', ['project_id' => $acme->id]);
+    task('Beta', 'todo', ['priority' => 9]);
+
+    Livewire::withQueryParams(['search' => ' Al ', 'filters' => ['project_id' => [(string) $acme->id, '999'], 'urgent' => '1', 'bogus' => 'x']])
+        ->test(TaskBoard::class)
+        ->assertSee('Alpha')
+        ->assertDontSee('Alps')
+        ->assertDontSee('Beta')
+        ->assertSeeHtml('\u0022initial\u0022:{\u0022search\u0022:\u0022Al\u0022')
+        ->call('$refresh')
+        ->assertSeeHtml('\u0022initial\u0022:null'); // a Livewire update reads no URL: the browser keeps its own state
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->persistInUrl(false);
+        }
+    };
+
+    Livewire::withQueryParams(['filters' => ['urgent' => '1']])->test($component::class)->assertSee('Alps');
+});
+
+it('turns a URL value into what the browser holds', function () {
+    $select = Filter::make('status')->options(['open' => 'Open', 3 => 'Three']);
+    $multiple = Filter::make('owner')->multiple()->options([1 => 'Ana', 2 => 'Dan']);
+    $toggle = Filter::make('mine')->toggle()->query(fn ($q) => $q);
+
+    expect($select->state('open'))->toBe('open')
+        ->and($select->state('3'))->toBe('3')
+        ->and($select->state('nope'))->toBe('')
+        ->and($select->state(['open']))->toBe('')
+        ->and($multiple->state(['2', '1', '2', '9', ['x']]))->toBe(['1', '2'])
+        ->and($multiple->state('1'))->toBe(['1'])
+        ->and($toggle->state('1'))->toBeTrue()
+        ->and($toggle->state('0'))->toBeFalse()
+        ->and($toggle->state(null))->toBeFalse();
+});
+
 it('refuses to render a toggle filter without a query, before anyone clicks it', function () {
     $component = new class extends TaskBoard
     {

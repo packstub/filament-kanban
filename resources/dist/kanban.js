@@ -46,8 +46,12 @@ export default function packstubKanban(config) {
         init() {
             this.restore()
 
-            // A bookmarked or shared board: the page came unfiltered, so load it as the URL says.
-            if (config.url && this.readUrl()) {
+            // A bookmarked or shared board: the page was drawn as its URL says (config.initial).
+            // A board drawn on a later request (lazy, deferred) came unfiltered: load it as the URL says.
+            if (config.initial) {
+                this.search = config.initial.search || ''
+                Object.assign(this.active, config.initial.filters || {})
+            } else if (config.url && this.readUrl()) {
                 this.refresh()
             }
 
@@ -341,20 +345,36 @@ export default function packstubKanban(config) {
             return filter.type === 'multiple' ? value.length > 0 : filter.type === 'toggle' ? value === true : value !== ''
         },
 
+        // A few quick clicks are one request (as typing in the search is).
         toggleOption(filter, value) {
             const current = this.active[filter.name]
             this.active[filter.name] = current.includes(value) ? current.filter((v) => v !== value) : [...current, value]
-            this.refresh()
+            this.queueRefresh()
         },
 
         toggleFilter(filter) {
             this.active[filter.name] = ! this.active[filter.name]
-            this.refresh()
+            this.queueRefresh()
         },
 
         clearFilter(filter) {
             this.active[filter.name] = blankFor(filter)
-            this.refresh()
+            this.queueRefresh()
+        },
+
+        // The filter popover opens rightwards, or leftwards when that would leave the screen.
+        openFilter(filter, button) {
+            const key = 'filter:' + filter.name
+            this.menu = this.menu === key ? null : key
+            if (! this.menu) return
+
+            this.$nextTick(() => {
+                const popover = button.parentElement.querySelector('.pk-filter-menu')
+                popover?.classList.remove('pk-menu-end')
+                if (popover && popover.getBoundingClientRect().right > document.documentElement.clientWidth - 8) {
+                    popover.classList.add('pk-menu-end')
+                }
+            })
         },
 
         /* ------------------------------------------------------------ the URL */
@@ -410,11 +430,15 @@ export default function packstubKanban(config) {
             if (! config.url) return
 
             try {
+                // Only what this board owns is replaced: other parameters (another component's
+                // `filters[...]`, a `search` the board does not use) stay as they are.
+                const names = new Set(this.filters.map((f) => f.name))
+                const owned = (key) => (key === 'search' && config.searchable) || names.has(key.match(/^filters\[([^\]]+)\](?:\[\d*\])?$/)?.[1])
                 const url = new URL(window.location.href)
-                const pairs = [...url.searchParams].filter(([key]) => key !== 'search' && ! key.startsWith('filters['))
+                const pairs = [...url.searchParams].filter(([key]) => ! owned(key))
 
                 const search = this.search.trim()
-                if (search) pairs.push(['search', search])
+                if (search && config.searchable) pairs.push(['search', search])
 
                 for (const filter of this.filters) {
                     const value = this.active[filter.name]

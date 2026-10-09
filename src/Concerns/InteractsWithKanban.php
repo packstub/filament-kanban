@@ -4,6 +4,7 @@ namespace Packstub\Kanban\Concerns;
 
 use Filament\Actions\Contracts\HasActions;
 use Livewire\Attributes\Renderless;
+use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
 
@@ -89,6 +90,30 @@ trait InteractsWithKanban
      */
     protected function kanbanMoved(string $id, string $to, array $card): void {}
 
+    /**
+     * The search and filters in the page's query string, checked as any value from the
+     * browser is: only the board's own filters, only values among their options.
+     *
+     * @return array{search: string, filters: array<string, string|list<string>|bool>}
+     */
+    protected function kanbanUrlState(Board $board): array
+    {
+        $search = request()->query('search');
+        $sent = request()->query('filters');
+        $filters = [];
+
+        foreach ($board->getFilters() as $filter) {
+            if (is_array($sent) && array_key_exists($filter->getName(), $sent)) {
+                $filters[$filter->getName()] = $filter->state($sent[$filter->getName()]);
+            }
+        }
+
+        return [
+            'search' => $board->isSearchable() && is_string($search) ? trim($search) : '',
+            'filters' => $filters,
+        ];
+    }
+
     /** @return array<string, mixed> */
     public function getKanbanConfig(): array
     {
@@ -102,9 +127,14 @@ trait InteractsWithKanban
             $filter->assertUsable();
         }
 
+        // The page itself (not a Livewire update) is drawn as its URL says: a bookmarked or
+        // shared board shows filtered from the start, with no second request.
+        $initial = $board->persistsInUrl() && ! Livewire::isLivewireRequest() ? $this->kanbanUrlState($board) : null;
+
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $board->getState(),
+            'columns' => $board->getState($initial['search'] ?? '', $initial['filters'] ?? []),
+            'initial' => $initial,
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),

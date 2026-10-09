@@ -146,7 +146,7 @@ it('applies a multiple filter with whereIn and drops the values it does not offe
         $query->whereIn('project_id', $values);
     })])->getCards('todo', filters: ['project_id' => [(string) $globex->id, 'nope', (string) $globex->id]]);
 
-    expect($received)->toBe([$globex->id]); // as the options spell it, without duplicates
+    expect($received)->toBe([(string) $globex->id]); // strings, as a select always passed them, without duplicates
 });
 
 it('applies a toggle filter only when it is on, through its required query', function () {
