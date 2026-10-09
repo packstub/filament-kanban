@@ -26,7 +26,7 @@ class KanbanAction extends Action
 
         $this->label(fn (): string => __('packstub-kanban::kanban.board'));
         $this->icon('heroicon-o-view-columns');
-        $this->visible(fn (): bool => $this->getPage() !== null);
+        $this->visible(fn (): bool => filled($page = $this->getPage()) && $this->getResource()::hasPage($page));
         $this->url(fn (): string => $this->getResource()::getUrl($this->getPage()));
     }
 

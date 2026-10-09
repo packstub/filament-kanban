@@ -7,12 +7,10 @@ use Packstub\Kanban\Card;
 use Packstub\Kanban\Column;
 use Packstub\Kanban\Pages\KanbanResourcePage;
 
-/** The resource's board page: no query() of its own, badge from the board. */
+/** The resource's board page: no query() of its own. */
 class TaskBoardPage extends KanbanResourcePage
 {
     protected static string $resource = TaskResource::class;
-
-    protected static bool $navigationBadgeFromBoard = true;
 
     /** Set by a test to give the board its own query. */
     public static ?\Closure $query = null;

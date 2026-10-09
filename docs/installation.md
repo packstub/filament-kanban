@@ -120,16 +120,20 @@ protected function getHeaderActions(): array
 
 The "Table" button is the board page's default `getHeaderActions()`, shown when the resource has an `index` page. Override the method to add to it (`[TableAction::make(), CreateAction::make()]`) or to drop it (`[]`). Outside a resource page, both actions take the resource explicitly: `KanbanAction::make()->resource(TaskResource::class)`.
 
-**The navigation badge.** Opt in to a badge with the number of cards the user may see, counted in one grouped query over the visible columns:
+**The navigation badge.** The sidebar shows the resource, not its pages, so the badge goes on the resource. The `HasKanbanNavigationBadge` trait makes the resource's badge the number of cards the user may see on its board page (the first `KanbanResourcePage` in `getPages()`), counted in one grouped query over the visible columns; no badge when the board is empty:
 
 ```php
-class TaskBoard extends KanbanResourcePage
+use Packstub\Kanban\Concerns\HasKanbanNavigationBadge;
+
+class TaskResource extends Resource
 {
-    protected static bool $navigationBadgeFromBoard = true;
+    use HasKanbanNavigationBadge;
 }
 ```
 
-A standalone `KanbanPage` takes the same property. Off (the default), building the navigation never touches the database; override `getNavigationBadge()` for anything else.
+For your own badge, `TaskBoard::getBoardCount()` gives the number. It builds the page without `mount()`, so a `kanban()` that reads state set in `mount()` or a public property counts without it.
+
+A standalone `KanbanPage` is its own navigation item: `protected static bool $navigationBadgeFromBoard = true;` on the page shows the same count. Off (the default), building the navigation never touches the database.
 
 ## A board in any Livewire component
 

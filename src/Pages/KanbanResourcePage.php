@@ -6,16 +6,15 @@ use Filament\Resources\Pages\Page;
 use Filament\Support\Enums\Width;
 use Packstub\Kanban\Actions\TableAction;
 use Packstub\Kanban\Board;
-use Packstub\Kanban\Concerns\HasNavigationBadgeFromBoard;
 use Packstub\Kanban\Concerns\InteractsWithKanban;
 
 /**
  * A resource page holding one board, next to the resource's list. Implement
  * kanban(Board $board); without a query() the board shows the resource's records.
+ * For a badge on the resource's navigation item, see HasKanbanNavigationBadge.
  */
 abstract class KanbanResourcePage extends Page
 {
-    use HasNavigationBadgeFromBoard;
     use InteractsWithKanban;
 
     protected string $view = 'packstub-kanban::pages.kanban';

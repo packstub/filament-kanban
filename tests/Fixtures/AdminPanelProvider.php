@@ -14,6 +14,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->default()
-            ->resources([TaskResource::class]);
+            ->resources([TaskResource::class])
+            ->pages([StandaloneBoardPage::class]);
     }
 }

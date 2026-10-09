@@ -26,6 +26,16 @@ trait InteractsWithKanban
     }
 
     /**
+     * How many cards the user may see on this board, over its visible columns, in one
+     * grouped query: for a navigation badge. Builds the component without mount(), so
+     * a kanban() that reads state set in mount() or a public property counts without it.
+     */
+    public static function getBoardCount(): int
+    {
+        return app(static::class)->getKanban()->getTotalCount();
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      * @param  array<string, int>  $loaded  cards already shown per column, reloaded as many
      * @return array{columns: list<array<string, mixed>>}

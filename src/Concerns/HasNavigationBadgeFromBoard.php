@@ -3,9 +3,9 @@
 namespace Packstub\Kanban\Concerns;
 
 /**
- * An opt-in navigation badge with the number of cards on the board (one grouped
- * query over the visible columns). Off by default, so building the navigation
- * never touches the database.
+ * An opt-in navigation badge on a standalone KanbanPage: the number of cards on the
+ * board (one grouped query over the visible columns), none when the board is empty.
+ * Off by default, so building the navigation never touches the database.
  */
 trait HasNavigationBadgeFromBoard
 {
@@ -17,6 +17,6 @@ trait HasNavigationBadgeFromBoard
             return parent::getNavigationBadge();
         }
 
-        return (string) app(static::class)->getKanban()->getTotalCount();
+        return ($count = static::getBoardCount()) > 0 ? (string) $count : null;
     }
 }

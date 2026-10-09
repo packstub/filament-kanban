@@ -7,7 +7,7 @@ use Packstub\Kanban\Actions\KanbanAction;
 use Packstub\Kanban\Actions\TableAction;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Column;
-use Packstub\Kanban\Pages\KanbanResourcePage;
+use Packstub\Kanban\Pages\KanbanPage;
 use Packstub\Kanban\Tests\Fixtures\ListTasks;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoardPage;
@@ -109,23 +109,32 @@ it('hides the Table link when the resource has no index page', function () {
     expect(TableAction::make()->resource($resource::class)->isVisible())->toBeFalse();
 });
 
-it('counts the visible columns\' cards in the navigation badge', function () {
+it('hides KanbanAction when the named page does not exist', function () {
+    $action = KanbanAction::make()->resource(TaskResource::class)->page('pipeline');
+
+    expect($action->isVisible())->toBeFalse();
+});
+
+it('shows the board\'s count on the resource\'s navigation item', function () {
     task('A');
     task('B', 'doing');
     task('C', 'done'); // hidden column
     task('D', attributes: ['project_id' => project('Acme')->id]); // outside the resource's query
 
-    expect(TaskBoardPage::getNavigationBadge())->toBe('2');
+    expect(navigationBadges())->toBe(['Standalone Board Page' => '3', 'Tasks' => '2'])
+        ->and(TaskResource::getKanbanPage())->toBe(TaskBoardPage::class);
 });
 
-it('leaves the badge alone, without a query, unless enabled', function () {
-    $page = new class extends KanbanResourcePage
-    {
-        protected static string $resource = TaskResource::class;
+it('shows no badge on an empty board', function () {
+    expect(navigationBadges())->toBe(['Standalone Board Page' => null, 'Tasks' => null]);
+});
 
+it('leaves a standalone page\'s badge alone, without a query, unless enabled', function () {
+    $page = new class extends KanbanPage
+    {
         public function kanban(Board $board): Board
         {
-            return $board->columns([Column::make('todo')]);
+            return $board->query(fn () => Task::query())->columns([Column::make('todo')]);
         }
     };
 
@@ -134,3 +143,32 @@ it('leaves the badge alone, without a query, unless enabled', function () {
     expect($page::getNavigationBadge())->toBeNull()
         ->and(DB::getQueryLog())->toBe([]);
 });
+
+it('leaves a resource\'s badge alone when it has no board page', function () {
+    $resource = new class extends TaskResource
+    {
+        public static function getPages(): array
+        {
+            return ['index' => ListTasks::route('/')];
+        }
+    };
+
+    task('A');
+
+    expect($resource::getKanbanPage())->toBeNull()
+        ->and($resource::getNavigationBadge())->toBeNull();
+});
+
+/** @return array<string, string|null> the main navigation's items, label => badge */
+function navigationBadges(): array
+{
+    $badges = [];
+
+    foreach (Filament::getNavigation() as $group) {
+        foreach ($group->getItems() as $item) {
+            $badges[$item->getLabel()] = $item->getBadge();
+        }
+    }
+
+    return $badges;
+}
