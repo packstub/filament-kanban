@@ -197,8 +197,9 @@ class Board
      * sees; any other exception is reported and the user sees "The move did not go
      * through." Default: set the column attribute and save.
      *
-     * With swimlanes, the lane the card was dropped in comes fourth (null for the
-     * unassigned lane, or when the move carried none): the default save sets both.
+     * With swimlanes a lane change comes fourth: the new lane's value, '' (Lane::UNASSIGNED)
+     * for a drop into the unassigned lane, null when the lane did not change. The default
+     * save sets the column, and the lane (null for '') when it changed.
      *
      * @param  Closure(Model $record, string $to, string $from, ?string $lane): void  $callback
      */
@@ -500,7 +501,7 @@ class Board
         return $ids === [] ? new EloquentCollection : $this->baseQuery()->whereKey($ids)->get();
     }
 
-    /** Whether any of these ids is still on the board (one exists() per set of ids, per request). */
+    /** Whether any of these ids is still on the board (one exists() per set of ids, per request); false past the cap. */
     public function hasRecords(array $ids): bool
     {
         $ids = static::selectionIds($ids);
@@ -513,7 +514,8 @@ class Board
     }
 
     /**
-     * The ids a selection sent, cleaned: scalars only, as strings, unique, at most MAX_SELECTION.
+     * The ids a selection sent, cleaned: scalars only, as strings, unique. A selection
+     * past MAX_SELECTION is refused as a whole (an empty list), never trimmed.
      *
      * @param  array<mixed>  $ids
      * @return list<string>
@@ -522,7 +524,13 @@ class Board
     {
         $ids = array_values(array_unique(array_map('strval', array_filter($ids, fn ($id) => is_scalar($id) && ! blank($id)))));
 
-        return array_slice($ids, 0, static::MAX_SELECTION);
+        return count($ids) > static::MAX_SELECTION ? [] : $ids;
+    }
+
+    /** @param  array<mixed>  $ids */
+    public static function selectionTooLarge(array $ids): bool
+    {
+        return count(array_unique(array_map('strval', array_filter($ids, fn ($id) => is_scalar($id) && ! blank($id))))) > static::MAX_SELECTION;
     }
 
     /** Whether a new card may be created in this column now: visible, droppable, creatable and not full. */
@@ -692,7 +700,7 @@ class Board
      * propagates as it is.
      *
      * @param  list<string>|null  $order  the target column's card ids, top to bottom, when reorderable
-     * @param  string|null  $lane  with swimlanes, the lane the card was dropped in ('' for unassigned); null leaves it
+     * @param  string|null  $lane  with swimlanes, the lane the card was dropped in ('' for unassigned); null, or the card's own lane, leaves it
      * @return array<string, mixed>
      *
      * @throws MoveRejected
@@ -711,13 +719,16 @@ class Board
         }
 
         $lane = $this->hasLanes() ? $lane : null;
-        $fromLane = $lane === null ? null : $this->laneValue($record);
 
         if ($lane !== null && $this->getLane($lane) === null) {
             throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
         }
 
-        if ($from !== $to || ($lane !== null && $lane !== $fromLane)) {
+        // The lane only changes when the card lands in another row: a move inside its own row
+        // (or one that carried no lane) leaves the attribute alone, whatever value it holds.
+        $lane = $lane !== null && $lane !== $this->laneValue($record) ? $lane : null;
+
+        if ($from !== $to || $lane !== null) {
             if (! $source->isDraggable() || ! $target->isDroppable() || ($from !== $to && ! $target->accepting($from))) {
                 throw new MoveRejected(__('packstub-kanban::kanban.not_allowed_into', ['column' => $target->getLabel()]));
             }
@@ -731,7 +742,7 @@ class Board
             // its message is not for the user (see InteractsWithKanban::kanbanMove()).
             if ($this->moveUsing) {
                 $this->hasLanes()
-                    ? ($this->moveUsing)($record, $to, $from, $lane === Lane::UNASSIGNED ? null : $lane)
+                    ? ($this->moveUsing)($record, $to, $from, $lane)
                     : ($this->moveUsing)($record, $to, $from);
             } else {
                 $record->setAttribute($this->columnAttribute, $to);

@@ -110,8 +110,24 @@ it('ignores ids that are not scalars and caps a selection, without an error', fu
         ->assertHasNoErrors();
 
     expect(Board::selectionIds([[1], 2, '2', ' ', null, 3.0]))->toBe(['2', '3'])
-        ->and(Board::selectionIds(range(1, Board::MAX_SELECTION + 10)))->toHaveCount(Board::MAX_SELECTION)
+        ->and(Board::selectionIds(range(1, Board::MAX_SELECTION + 10)))->toBe([]) // refused as a whole, never trimmed
+        ->and(Board::selectionTooLarge(range(1, Board::MAX_SELECTION)))->toBeFalse()
+        ->and(Board::selectionTooLarge(range(1, Board::MAX_SELECTION + 1)))->toBeTrue()
         ->and($a->fresh())->toMatchArray(['status' => 'doing', 'priority' => 1]);
+});
+
+it('refuses a bulk action past the cap as a whole, like a bulk move', function () {
+    $a = task('A');
+    $ids = [...array_map('strval', range(1000, 1000 + Board::MAX_SELECTION)), (string) $a->id];
+
+    Livewire::test(TaskBoard::class)
+        ->assertActionHidden('bumpAll', ['kanbanRecords' => $ids])
+        ->call('mountAction', 'bumpAll', ['kanbanRecords' => $ids])
+        ->call('callMountedAction')
+        ->assertNotDispatched('packstub-kanban-refresh');
+
+    expect($a->fresh()->priority)->toBe(0)
+        ->and(Livewire::test(TaskBoard::class)->instance()->getKanbanConfig()['maxSelection'])->toBe(Board::MAX_SELECTION);
 });
 
 it('refuses Filament\'s table bulk actions on the board and names the plugin\'s', function () {

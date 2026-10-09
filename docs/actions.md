@@ -93,7 +93,7 @@ use Packstub\Kanban\Actions\BulkAction;
 
 Mind the import: `Packstub\Kanban\Actions\BulkAction`, not Filament's `Filament\Actions\BulkAction` (or `DeleteBulkAction`), which read a table's selection and have no place on a board; the board refuses them with a clear error.
 
-The records are loaded through the board's `query()`, so a selection never reaches a record the user cannot see on the board; ids outside it are dropped (a selection carries at most 500), and the action is hidden when nothing selected is on the board. The board reloads once the action has run. A plain `Action` works on the bar too, with the selected ids in `$arguments['kanbanRecords']`.
+The records are loaded through the board's `query()`, so a selection never reaches a record the user cannot see on the board; ids outside it are dropped (a selection stops at 500 cards; a larger one is refused as a whole, not trimmed), and the action is hidden when nothing selected is on the board. The board reloads once the action has run. A plain `Action` works on the bar too, with the selected ids in `$arguments['kanbanRecords']`.
 
 "Move to…" offers the columns every selected card may go to, by the same rules as a drag; see [Moving several cards](moves.md#moving-several-cards).
 

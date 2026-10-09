@@ -322,14 +322,22 @@ export default function packstubKanban(config) {
             const from = cell.indexOf(this.lastSelected)
             const to = cell.indexOf(card.id)
 
+            let next
             if (event?.shiftKey && from >= 0 && to >= 0) {
                 const range = cell.slice(Math.min(from, to), Math.max(from, to) + 1)
-                this.selected = [...new Set([...this.selected, ...range])]
+                next = [...new Set([...this.selected, ...range])]
             } else if (this.isSelected(card.id)) {
-                this.selected = this.selected.filter((id) => id !== card.id)
+                next = this.selected.filter((id) => id !== card.id)
             } else {
-                this.selected = [...this.selected, card.id]
+                next = [...this.selected, card.id]
             }
+
+            // The server refuses a selection past the cap as a whole, so the browser stops there.
+            if (config.maxSelection && next.length > config.maxSelection) {
+                return this.notify(this.t.bulk_limit.replace(':max', config.maxSelection), 'danger')
+            }
+
+            this.selected = next
 
             this.lastSelected = card.id
             this.menu = null

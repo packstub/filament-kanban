@@ -36,23 +36,26 @@ use Packstub\Kanban\Lane;
 
 A closure returning the lanes is evaluated once per request, so it can depend on the user. Labels and colours take closures too.
 
-Cards whose value is not among the defined lanes (and `null` ones) are shown in an "Unassigned" lane, added while the board holds such cards. Define `Lane::make('')` (the empty value, `Lane::UNASSIGNED`) yourself to give it a label or keep it always visible.
+Cards whose value is not among the defined lanes (and `null` ones) are shown in an "Unassigned" lane, added while the board holds such cards. Define `Lane::make('')` (the empty value, `Lane::UNASSIGNED`) yourself to give it a label or keep it always visible. A card keeps its own value while it moves inside that row; a drop *into* the "Unassigned" (or "Other") row writes `null`.
 
 ## What a drop does
 
-A card dropped in another lane gets that lane's value as well as the column's: the default save sets both attributes (`null` for the unassigned lane). A drop in another lane of the same column is a move too, with the same `CardMoved` event (`$event->lane`), browser event and `kanbanMoved()` hook.
+A card dropped in another lane gets that lane's value as well as the column's: the default save sets both attributes (`null` for the unassigned lane). A drop in another lane of the same column is a move too, with the same `CardMoved` event (`$event->lane`), browser event and `kanbanMoved()` hook. A move inside the card's own row leaves the lane attribute alone, whatever value it holds, so a card in "Unassigned" or "Other" keeps its real value.
 
 Every column rule applies unchanged. A WIP limit counts the whole column across lanes; the column header's count is the column's, each lane header shows its own.
 
-`moveUsing()` receives the lane fourth, when the board has swimlanes: the lane's value, or `null` for the unassigned lane, which is what the default save writes.
+`moveUsing()` receives the lane change fourth, when the board has swimlanes: `null` means the lane did not change (a move inside the row, a "Move to…" from the card's menu, a bulk move), `''` (`Lane::UNASSIGNED`) means the card moved to the unassigned lane, anything else is the new lane's value.
 
 ```php
 ->moveUsing(function (Task $task, string $to, string $from, ?string $lane) {
-    $task->update(['status' => $to, 'assignee_id' => $lane]);
+    $task->update([
+        'status' => $to,
+        ...($lane === null ? [] : ['assignee_id' => $lane === '' ? null : $lane]),
+    ]);
 })
 ```
 
-A "Move to…" from the card's menu, or a bulk move, keeps the card's lane; the closure then gets `null` too, so a closure that must tell the two apart reads the record's current value. `CardMoved::$lane` keeps the wire value (`''` for the unassigned lane, `null` when the move carried none).
+`CardMoved::$lane` carries the same value.
 
 ## Folding and paging
 

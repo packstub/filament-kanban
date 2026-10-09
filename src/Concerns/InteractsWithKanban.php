@@ -106,7 +106,7 @@ trait InteractsWithKanban
         $refused = [];
         $columns = [$to];
 
-        if (count(Board::selectionIds($ids)) === Board::MAX_SELECTION && count($ids) > Board::MAX_SELECTION) {
+        if (Board::selectionTooLarge($ids)) {
             return ['ok' => false, 'moved' => [], 'refused' => [], 'summaries' => [], 'message' => __('packstub-kanban::kanban.bulk_limit', ['max' => Board::MAX_SELECTION])];
         }
 
@@ -163,6 +163,7 @@ trait InteractsWithKanban
             'searchable' => $board->isSearchable(),
             'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
             'selectable' => $board->isSelectable(),
+            'maxSelection' => Board::MAX_SELECTION,
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
             'cardActions' => array_map(fn ($action) => [

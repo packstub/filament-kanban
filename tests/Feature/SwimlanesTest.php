@@ -189,15 +189,67 @@ it('caps derived lanes and folds the rest into an "Other" lane', function () {
         ->and(array_column($board->getCards('todo', lane: ''), 'title'))->toBe(['Task 51', 'Task 52']);
 });
 
-it('passes null to moveUsing() for the unassigned lane, as the default save writes', function () {
-    $task = task('Build', 'todo', ['assignee' => 'ana']);
-    task('Loose', 'doing');
-    $seen = 'unset';
+it('changes the lane only when the card lands in another row: a move inside its own row keeps whatever value it holds', function () {
+    $zed = task('Zed', 'todo', ['assignee' => 'zed']); // not one of the defined lanes: shown in Unassigned
+    $ana = task('Ana', 'todo', ['assignee' => 'ana']);
+    $seen = [];
 
-    laneBoard()->swimlanes('assignee')->moveUsing(function (Task $record, string $to, string $from, ?string $lane) use (&$seen) {
-        $seen = $lane;
-        $record->update(['status' => $to, 'assignee' => $lane]);
-    })->move((string) $task->id, 'doing', null, '');
+    $board = laneBoard()->swimlanes('assignee', [Lane::make('ana')])->moveUsing(function (Task $record, string $to, string $from, ?string $lane) use (&$seen) {
+        $seen[] = $lane;
+        $record->update(['status' => $to, ...($lane === null ? [] : ['assignee' => $lane === '' ? null : $lane])]);
+    });
 
-    expect($seen)->toBeNull()->and($task->fresh()->assignee)->toBeNull();
+    $board->move((string) $zed->id, 'doing', null, '');          // dragged within the Unassigned row
+    $board->move((string) $ana->id, 'doing', null, 'ana');       // dragged within its own row
+    $board->move((string) $ana->id, 'done');                     // no lane sent (a bulk move, a "Move to…")
+
+    expect($seen)->toBe([null, null, null])
+        ->and($zed->fresh())->toMatchArray(['status' => 'doing', 'assignee' => 'zed'])
+        ->and($ana->fresh())->toMatchArray(['status' => 'done', 'assignee' => 'ana']);
+
+    $board->move((string) $zed->id, 'doing', null, 'ana');       // a real change writes
+    $board->move((string) $ana->id, 'done', null, '');           // to Unassigned: moveUsing() sees '', the save writes null
+
+    expect($seen)->toBe([null, null, null, 'ana', ''])
+        ->and($zed->fresh()->assignee)->toBe('ana')
+        ->and($ana->fresh()->assignee)->toBeNull();
+});
+
+it('keeps the lane on a bulk move and on the default save inside the row, and writes null for a drop into Unassigned', function () {
+    Event::fake([CardMoved::class]);
+    $zed = task('Zed', 'todo', ['assignee' => 'zed']);
+    $ana = task('Ana', 'todo', ['assignee' => 'ana']);
+    $board = laneBoard()->swimlanes('assignee', [Lane::make('ana')]);
+
+    $board->move((string) $zed->id, 'doing', null, '');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->record->is($zed) && $e->lane === null);
+    $board->move((string) $ana->id, 'doing', null, '');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->record->is($ana) && $e->lane === '');
+
+    expect($zed->fresh())->toMatchArray(['status' => 'doing', 'assignee' => 'zed'])
+        ->and($ana->fresh())->toMatchArray(['status' => 'doing', 'assignee' => null]);
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->swimlanes('assignee', [Lane::make('ana')]);
+        }
+    };
+
+    $zed->update(['status' => 'todo']);
+    Livewire::test($component::class)->call('kanbanMoveMany', [(string) $zed->id], 'doing')->assertReturned(fn ($r) => $r['ok']);
+
+    expect($zed->fresh())->toMatchArray(['status' => 'doing', 'assignee' => 'zed']);
+});
+
+it('keeps a value past the derived-lane cap while the card moves inside "Other"', function () {
+    foreach (range(1, Board::MAX_DERIVED_LANES + 1) as $i) {
+        task("Task {$i}", 'todo', ['assignee' => sprintf('u%02d', $i), 'priority' => 1000 - $i]);
+    }
+
+    $last = Task::firstWhere('assignee', 'u51');
+    laneBoard()->swimlanes('assignee')->move((string) $last->id, 'doing', null, '');
+
+    expect($last->fresh())->toMatchArray(['status' => 'doing', 'assignee' => 'u51']);
 });
