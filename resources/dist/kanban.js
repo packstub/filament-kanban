@@ -388,7 +388,7 @@ export default function packstubKanban(config) {
         tr(key, replacements = {}) {
             let text = typeof this.t?.[key] === 'string' ? this.t[key] : key
             for (const [name, value] of Object.entries(replacements)) {
-                text = text.replace(':' + name, String(value))
+                text = text.replace(':' + name, () => String(value)) // a function: "$&" in a label stays as it is
             }
 
             return text
@@ -414,13 +414,13 @@ export default function packstubKanban(config) {
             this.$nextTick(() => this.$refs.tabs?.querySelector('.pk-tab-on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
         },
 
-        // Roving tabindex on the tab bar: the arrows, Home and End select and focus the next tab.
+        // Roving tabindex on the tab bar: the arrows (wrapping), Home and End select and focus the next tab.
         tabKeys(event) {
             const tabs = [...event.currentTarget.querySelectorAll('.pk-tab')].filter((t) => t.offsetParent)
             const at = tabs.indexOf(event.target)
             if (at < 0) return
 
-            const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key]
+            const to = { ArrowRight: (at + 1) % tabs.length, ArrowLeft: (at - 1 + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key]
             if (to === undefined || ! tabs[to]) return
 
             event.preventDefault()
