@@ -220,6 +220,31 @@ it('renumbers the whole column: the loaded cards first, the others after them in
         ->and($updates)->toHaveCount(3); // only the positions that change (B, A, N); C and D already fit
 });
 
+it('shifts the cards beyond the loaded page in one statement when they collide, and leaves them alone when they do not', function () {
+    foreach (range(1, 6) as $i) {
+        task("T{$i}", 'todo', ['sort' => $i]);
+    }
+    $new = task('New', 'doing', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')->perColumn(2);
+
+    // Dropped at the top of the column: the two loaded cards get 1 and 2, the four below (3..6) collide and move up by one.
+    DB::enableQueryLog();
+    $board->move((string) $new->id, 'todo', [(string) $new->id, '1', '2']);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['New' => 1, 'T1' => 2, 'T2' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7])
+        ->and($updates)->toHaveCount(4) // the status, T1 and T2 (New already is 1), then one shift of the tail
+        ->and($updates->last())->toContain('"sort" = "sort" + 1');
+
+    // Reordered within the loaded page: the tail already sits above it, nothing below is touched.
+    DB::flushQueryLog();
+    $board->move('2', 'todo', ['2', (string) $new->id, '1']);
+
+    expect(collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update')))->toHaveCount(3)
+        ->and(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['T2' => 1, 'New' => 2, 'T1' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7]);
+});
+
 it('sorts a card without a position last, never first', function () {
     task('A', 'todo', ['sort' => 1]);
     task('N', 'todo');

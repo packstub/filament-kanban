@@ -606,7 +606,7 @@ class Board
     {
         if ($this->orderAttribute) {
             $position = $query->getGrammar()->wrap($query->qualifyColumn($this->orderAttribute));
-            $query->orderByRaw("{$position} is null")->orderBy($this->orderAttribute);
+            $query->orderByRaw("case when {$position} is null then 1 else 0 end")->orderBy($this->orderAttribute);
         }
 
         if ($sort = $column->getSort() ?? $this->sort) {
@@ -619,7 +619,9 @@ class Board
     /**
      * Renumber the column: the ids the browser sent (its loaded cards, top to bottom)
      * get 1..n, every other card of the column follows in its current order. Only
-     * positions that change are written, so a column already in order costs no update.
+     * positions that change are written: the cards beyond the loaded page are left
+     * alone when they already sit above n, shifted up together (one statement) when
+     * they collide, and the ones without a position are numbered after them.
      *
      * @param  list<string>  $order
      */
@@ -638,19 +640,38 @@ class Board
             ->mapWithKeys(fn ($position, $id) => [(string) $id => $position === null ? null : (int) $position])
             ->all();
 
-        $positions = [];
+        $sent = [];
 
-        foreach ([...array_map(fn ($id) => (string) $id, $order), ...array_keys($current)] as $id) {
-            if (array_key_exists($id, $current) && ! isset($positions[$id])) {
-                $positions[$id] = count($positions) + 1;
+        foreach ($order as $id) {
+            if (array_key_exists($id = (string) $id, $current) && ! isset($sent[$id])) {
+                $sent[$id] = count($sent) + 1;
             }
         }
 
         $update = $query->toBase();
 
-        foreach ($positions as $id => $position) {
+        foreach ($sent as $id => $position) {
             if ($current[$id] !== $position) {
                 (clone $update)->where($keyName, $id)->update([$this->orderAttribute => $position]);
+            }
+        }
+
+        $tail = array_diff_key($current, $sent);
+        $taken = array_filter($tail, fn (?int $position) => $position !== null);
+        $shift = $taken === [] ? 0 : max(0, count($sent) + 1 - min($taken));
+
+        if ($shift > 0) {
+            (clone $update)
+                ->whereNotIn($keyName, array_keys($sent))
+                ->whereNotNull($query->qualifyColumn($this->orderAttribute))
+                ->update([$this->orderAttribute => DB::raw($query->getGrammar()->wrap($this->orderAttribute)." + {$shift}")]);
+        }
+
+        $next = max(count($sent), $taken === [] ? 0 : max($taken) + $shift);
+
+        foreach ($tail as $id => $position) {
+            if ($position === null) {
+                (clone $update)->where($keyName, $id)->update([$this->orderAttribute => ++$next]);
             }
         }
     }

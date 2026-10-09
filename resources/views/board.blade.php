@@ -13,10 +13,10 @@
     The stylesheet arrives with x-load-css, after the first paint: without this
     the markup shows unstyled for a frame (an icon the width of the page).
     kanban.css undoes the rule with a more specific selector once it applies;
-    should it never arrive, the script below reveals the board after 1.5 s.
+    should it never arrive, the animation reveals the board after 1.5 s (CSS
+    only: it works under a strict CSP and for a board inserted later).
 --}}
-<style>.pk { visibility: hidden; } .pk.pk-ready { visibility: visible; }</style>
-<script>setTimeout(() => document.querySelectorAll('.pk').forEach((el) => el.classList.add('pk-ready')), 1500)</script>
+<style>.pk { visibility: hidden; animation: pk-reveal 0s 1.5s forwards; } @keyframes pk-reveal { to { visibility: visible; } }</style>
 <div
     wire:ignore
     x-load

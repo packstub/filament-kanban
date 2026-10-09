@@ -22,7 +22,7 @@ const TEXT = new WeakMap()
 
 export default function packstubKanban(config) {
     return {
-        columns: config.columns,
+        columns: config.columns || [],
         filters: config.filters,
         cardActions: config.cardActions || [],
         createAction: config.createAction,
@@ -41,6 +41,12 @@ export default function packstubKanban(config) {
 
         init() {
             this.restore()
+
+            // Rendered on a later request of the page (the server sends no state then):
+            // ask for it once instead of drawing an empty board.
+            if (config.columns === null) {
+                this.refresh()
+            }
 
             if (config.focus) {
                 document.body.classList.toggle('pk-focus-sidebar', this.sidebar)
@@ -307,6 +313,11 @@ export default function packstubKanban(config) {
 
             this.$wire.kanbanRefresh(this.search, this.active, loaded).then((result) => {
                 if (seq !== this.refreshSeq || ! result || (background && (this.dragging || this.pending))) {
+                    return
+                }
+
+                if (! this.columns.length) {
+                    this.columns = result.columns
                     return
                 }
 

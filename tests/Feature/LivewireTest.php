@@ -23,8 +23,34 @@ it('renders the board with its state as JSON for the browser', function () {
         ->assertSeeHtml('packstub/filament-kanban/components/kanban.js')
         ->assertSee('Write docs')
         ->assertSeeHtml('wire:ignore')
-        ->assertSeeHtml('<style>.pk { visibility: hidden; } .pk.pk-ready { visibility: visible; }</style>')
-        ->assertSeeHtml("classList.add('pk-ready')"); // reveals the board should the stylesheet never arrive
+        ->assertSeeHtml('<style>.pk { visibility: hidden; animation: pk-reveal 0s 1.5s forwards; }'); // revealed after 1.5 s should the stylesheet never arrive
+});
+
+it('lets a board first drawn on a later request ask for its state', function () {
+    task('Write docs');
+
+    $component = new class extends TaskBoard
+    {
+        public bool $ready = false;
+
+        public function load(): void
+        {
+            $this->ready = true;
+        }
+
+        public function render(): string
+        {
+            return '<div>@if ($ready) @include(\'packstub-kanban::board\') @else <p>loading</p> @endif <x-filament-actions::modals /></div>';
+        }
+    };
+
+    Livewire::test($component::class)
+        ->assertSee('loading')
+        ->call('load')
+        ->assertSeeHtml('x-data="packstubKanban(')
+        ->assertSeeHtml('\u0022columns\u0022:null') // the browser calls kanbanRefresh() once and takes the columns whole
+        ->call('kanbanRefresh')
+        ->assertReturned(fn ($result) => $result['columns'][0]['cards'][0]['title'] === 'Write docs');
 });
 
 it('loads the board state on the first render only, never on a re-render', function () {
@@ -41,6 +67,7 @@ it('loads the board state on the first render only, never on a re-render', funct
     $component
         ->call('$refresh')
         ->assertSeeHtml('x-data="packstubKanban(')
+        ->assertSeeHtml('\u0022columns\u0022:null')
         ->assertDontSee('Write docs')
         ->mountAction('edit', ['kanbanRecord' => (string) $task->id])
         ->assertActionMounted('edit');

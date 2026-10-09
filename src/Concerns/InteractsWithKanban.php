@@ -104,7 +104,8 @@ trait InteractsWithKanban
      * What the view hands to the browser, once per request. The board's state (cards,
      * counts, totals, summaries) is loaded on the first render only: the board is
      * `wire:ignore`d, so a later re-render (an action's modal, a form submit) would
-     * throw it away; those renders get the config without columns.
+     * throw it away; those renders get `columns: null`. A board first drawn on such
+     * a request (deferred, toggled, in a modal) loads its state with one refresh.
      *
      * @return array<string, mixed>
      */
@@ -123,7 +124,7 @@ trait InteractsWithKanban
 
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $this->kanbanHydrated ? [] : $board->getState(),
+            'columns' => $this->kanbanHydrated ? null : $board->getState(),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
