@@ -3,6 +3,7 @@
 namespace Packstub\Kanban\Concerns;
 
 use Filament\Actions\Contracts\HasActions;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
@@ -17,6 +18,13 @@ trait InteractsWithKanban
     use KanbanActions;
 
     protected ?Board $kanbanBoard = null;
+
+    /** @var array<string, mixed>|null */
+    protected ?array $kanbanConfig = null;
+
+    /** Whether the board has been sent with its state: later renders send `columns: null`. */
+    #[Locked]
+    public bool $kanbanDrawn = false;
 
     abstract public function kanban(Board $board): Board;
 
@@ -94,8 +102,28 @@ trait InteractsWithKanban
      */
     protected function kanbanMoved(string $id, string $to, array $card): void {}
 
-    /** @return array<string, mixed> */
+    /**
+     * What the view hands to the browser, once per request. The board's state (cards,
+     * counts, totals, summaries) is loaded the first time the board is drawn, on
+     * whichever request that is (a lazy or deferred board included): the board is
+     * `wire:ignore`d, so a later re-render (an action's modal, a form submit) would
+     * throw it away; those renders get `columns: null`. A board removed and drawn
+     * again (toggled off and on) loads its state with one refresh.
+     *
+     * @return array<string, mixed>
+     */
     public function getKanbanConfig(): array
+    {
+        if ($this->kanbanConfig === null) {
+            $this->kanbanConfig = $this->buildKanbanConfig();
+            $this->kanbanDrawn = true;
+        }
+
+        return $this->kanbanConfig;
+    }
+
+    /** @return array<string, mixed> */
+    protected function buildKanbanConfig(): array
     {
         $board = $this->getKanban();
 
@@ -104,7 +132,7 @@ trait InteractsWithKanban
 
         return [
             'key' => 'kanban:'.($board->getKey() ?? static::class).':'.(auth()->id() ?? 'guest'),
-            'columns' => $board->getState(),
+            'columns' => $this->kanbanDrawn ? null : $board->getState(),
             'icons' => $board->getIcons(),
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),

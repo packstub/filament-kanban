@@ -44,8 +44,8 @@
     --pk-soft: var(--gray-300);
 }
 
-/* The view hides the board inline until this file applies (see board.blade.php). */
-div.pk { visibility: visible; }
+/* The view hides the board inline until this file applies, and reveals it after 1.5 s should it never apply (see board.blade.php). */
+div.pk { visibility: visible; animation: none; }
 .pk [x-cloak] { display: none !important; }
 .pk svg, .sortable-fallback.pk-card svg { width: 1rem; height: 1rem; flex: none; }
 

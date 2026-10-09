@@ -4,7 +4,10 @@ use Filament\Actions\CreateAction;
 use Filament\Support\Colors\Color;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\HtmlString;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Card;
@@ -179,6 +182,159 @@ it('stores the order of a reorderable column', function () {
 
     expect(array_column($board->getCards('todo'), 'title'))->toBe(['B', 'C', 'A'])
         ->and($other->fresh()->sort)->toBeNull(); // ids from other columns are ignored
+});
+
+it('counts the WIP totals of every limited column in one grouped query', function () {
+    task('A', 'todo');
+    task('B', 'doing');
+    task('C', 'doing');
+
+    $limited = board()->columns([Column::make('todo')->limit(5), Column::make('doing')->limit(2), Column::make('done')]);
+
+    DB::enableQueryLog();
+    $state = $limited->getState();
+    $grouped = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_contains($sql, 'count(*)'));
+
+    expect(array_column($state, 'total'))->toBe([1, 2, null])
+        ->and($grouped)->toHaveCount(2) // the filtered counts and the unfiltered totals
+        ->and($grouped->every(fn (string $sql) => str_contains($sql, 'group by')))->toBeTrue();
+
+    DB::flushQueryLog();
+    board()->getState();
+
+    expect(collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_contains($sql, 'count(*)')))->toHaveCount(1); // no limit, no totals
+});
+
+it('renumbers the whole column: the loaded cards first, the others after them in their current order', function () {
+    $a = task('A', 'todo', ['sort' => 1]);
+    $b = task('B', 'todo', ['sort' => 2]);
+    $c = task('C', 'todo', ['sort' => 3]);
+    $d = task('D', 'todo', ['sort' => 4]);
+    $n = task('N', 'todo'); // no position yet
+
+    $board = board()->reorderable('sort')->perColumn(2);
+
+    DB::enableQueryLog();
+    $board->move((string) $b->id, 'todo', [(string) $b->id, (string) $a->id]);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect(array_column($board->getCards('todo', limit: 10), 'title'))->toBe(['B', 'A', 'C', 'D', 'N'])
+        ->and(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['B' => 1, 'A' => 2, 'C' => 3, 'D' => 4, 'N' => 5])
+        ->and($updates)->toHaveCount(2); // only the positions that change, one statement each for the loaded (B, A) and the unnumbered (N); C and D already fit
+});
+
+it('shifts the cards beyond the loaded page in one statement when they collide, and leaves them alone when they do not', function () {
+    foreach (range(1, 6) as $i) {
+        task("T{$i}", 'todo', ['sort' => $i]);
+    }
+    $new = task('New', 'doing', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')->perColumn(2);
+
+    // Dropped at the top of the column: the two loaded cards get 1 and 2, the four below (3..6) collide and move up by one.
+    DB::enableQueryLog();
+    $board->move((string) $new->id, 'todo', [(string) $new->id, '1', '2']);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['New' => 1, 'T1' => 2, 'T2' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7])
+        ->and($updates)->toHaveCount(3) // the status, T1 and T2 together (New already is 1), then one shift of the tail
+        ->and($updates->last())->toContain('"sort" = "tasks"."sort" + 1');
+
+    // Reordered within the loaded page: the tail already sits above it, nothing below is touched.
+    DB::flushQueryLog();
+    $board->move('2', 'todo', ['2', (string) $new->id, '1']);
+
+    expect(collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update')))->toHaveCount(1)
+        ->and(Task::query()->orderBy('sort')->pluck('sort', 'title')->all())->toBe(['T2' => 1, 'New' => 2, 'T1' => 3, 'T3' => 4, 'T4' => 5, 'T5' => 6, 'T6' => 7]);
+});
+
+it('sorts a card without a position last, never first', function () {
+    task('A', 'todo', ['sort' => 1]);
+    task('N', 'todo');
+    task('B', 'todo', ['sort' => 2]);
+
+    expect(array_column(board()->reorderable('sort')->getCards('todo'), 'title'))->toBe(['A', 'B', 'N']);
+});
+
+it('saves a move and its order in one transaction: a refusal or a failure rolls both back', function () {
+    Event::fake([CardMoved::class]);
+    $task = task('Build');
+    $other = task('Review', 'doing', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')->moveUsing(function (Task $record, string $to) {
+        $record->update(['status' => $to]);
+
+        throw new MoveRejected('Changed my mind.');
+    });
+
+    expect(fn () => $board->move((string) $task->id, 'doing', [(string) $task->id, (string) $other->id]))->toThrow(MoveRejected::class, 'Changed my mind.')
+        ->and($task->fresh()->status)->toBe('todo')
+        ->and($other->fresh()->sort)->toBe(1);
+    Event::assertNotDispatched(CardMoved::class);
+
+    // The move itself goes through, then storing the order fails: the move is undone too.
+    $broken = board()->reorderable('no_such_column');
+
+    expect(fn () => $broken->move((string) $task->id, 'doing', [(string) $task->id]))->toThrow(QueryException::class)
+        ->and($task->fresh()->status)->toBe('todo');
+    Event::assertNotDispatched(CardMoved::class);
+
+    board()->reorderable('sort')->move((string) $task->id, 'doing', [(string) $task->id, (string) $other->id]);
+
+    expect($task->fresh())->toMatchArray(['status' => 'doing', 'sort' => 1])
+        ->and($other->fresh()->sort)->toBe(2);
+    Event::assertDispatched(CardMoved::class, 1);
+});
+
+it('orders by a qualified position, so a joined query with the same column stays valid', function () {
+    task('B', 'todo', ['sort' => 2]);
+    task('A', 'todo', ['sort' => 1]);
+
+    $board = board()->reorderable('sort')
+        ->query(fn () => Task::query()->select('tasks.*')->leftJoin('tasks as parent', 'parent.id', '=', 'tasks.project_id'));
+
+    expect(array_column($board->getCards('todo'), 'title'))->toBe(['A', 'B']);
+});
+
+it('numbers cards without a position in batches, not one statement per card', function () {
+    foreach (range(1, 600) as $i) {
+        task("T{$i}");
+    }
+    $new = task('New', 'doing');
+
+    DB::enableQueryLog();
+    board()->reorderable('sort')->move((string) $new->id, 'todo', [(string) $new->id]);
+    $updates = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_starts_with($sql, 'update'));
+
+    expect($updates)->toHaveCount(4) // the status, New, then the 600 unnumbered cards in two statements
+        ->and(Task::query()->where('title', 'T1')->value('sort'))->toBe(2)
+        ->and(Task::query()->where('title', 'T600')->value('sort'))->toBe(601)
+        ->and(Task::query()->whereNull('sort')->count())->toBe(0);
+});
+
+it('forgets a cached card when its move rolls back', function () {
+    $task = task('Build');
+
+    $board = board()->moveUsing(function (Task $record, string $to) {
+        $record->setAttribute('status', $to)->save();
+
+        throw new MoveRejected('Not now.');
+    });
+
+    expect(fn () => $board->move((string) $task->id, 'doing'))->toThrow(MoveRejected::class)
+        ->and($board->findRecord((string) $task->id)->status)->toBe('todo');
+});
+
+it('keeps a saved move when a CardMoved listener throws, and reports the listener', function () {
+    $task = task('Build');
+    Event::listen(CardMoved::class, fn () => throw new RuntimeException('Mail server down'));
+    Exceptions::fake();
+
+    $card = board()->move((string) $task->id, 'doing');
+
+    expect($card['title'])->toBe('Build')
+        ->and($task->fresh()->status)->toBe('doing');
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'Mail server down');
 });
 
 it('evaluates column rules as closures', function () {
