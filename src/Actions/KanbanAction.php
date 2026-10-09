@@ -26,8 +26,13 @@ class KanbanAction extends Action
 
         $this->label(fn (): string => __('packstub-kanban::kanban.board'));
         $this->icon('heroicon-o-view-columns');
-        $this->visible(fn (): bool => filled($page = $this->getPage()) && $this->getResource()::hasPage($page));
-        $this->url(fn (): string => $this->getResource()::getUrl($this->getPage()));
+        $this->url(fn (): ?string => filled($page = $this->getPage()) ? $this->getPageUrl($page) : null);
+    }
+
+    /** Hidden without a board page the user may open, whatever visible() or hidden() the app adds. */
+    public function isHidden(): bool
+    {
+        return ! $this->canOpenPage($this->getPage()) || parent::isHidden();
     }
 
     /** The key of the board page in the resource's getPages(). */

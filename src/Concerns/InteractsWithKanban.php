@@ -22,7 +22,13 @@ trait InteractsWithKanban
 
     public function getKanban(): Board
     {
-        return $this->kanbanBoard ??= $this->kanban(Board::make()->key(static::class));
+        return $this->kanbanBoard ??= $this->kanbanDefaults($this->kanban(Board::make()->key(static::class)));
+    }
+
+    /** What a page fills in after kanban() (a resource page: the resource's query). */
+    protected function kanbanDefaults(Board $board): Board
+    {
+        return $board;
     }
 
     /**
@@ -32,7 +38,8 @@ trait InteractsWithKanban
      */
     public static function getBoardCount(): int
     {
-        return app(static::class)->getKanban()->getTotalCount();
+        // Once per request: the navigation may ask more than once.
+        return once(fn () => app(static::class)->getKanban()->getTotalCount());
     }
 
     /**

@@ -22,8 +22,13 @@ class TableAction extends Action
 
         $this->label(fn (): string => __('packstub-kanban::kanban.table'));
         $this->icon('heroicon-o-table-cells');
-        $this->visible(fn (): bool => $this->getResource()::hasPage($this->page));
-        $this->url(fn (): string => $this->getResource()::getUrl($this->page));
+        $this->url(fn (): string => $this->getPageUrl($this->page));
+    }
+
+    /** Hidden without a list page the user may open, whatever visible() or hidden() the app adds. */
+    public function isHidden(): bool
+    {
+        return ! $this->canOpenPage($this->page) || parent::isHidden();
     }
 
     /** The key of the list page in the resource's getPages(). */

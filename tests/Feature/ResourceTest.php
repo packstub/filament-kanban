@@ -2,6 +2,7 @@
 
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
 use Packstub\Kanban\Actions\KanbanAction;
 use Packstub\Kanban\Actions\TableAction;
@@ -15,6 +16,7 @@ use Packstub\Kanban\Tests\Fixtures\TaskResource;
 
 beforeEach(function () {
     TaskBoardPage::$query = null;
+    TaskResource::$ordered = false;
     Filament::setCurrentPanel(Filament::getPanel('admin'));
 });
 
@@ -188,6 +190,72 @@ it('keeps the board\'s count from a user who cannot open the board page', functi
     expect($resource::getKanbanPage())->toBe($page::class)
         ->and($page::getBoardCount())->toBe(1)
         ->and($resource::getNavigationBadge())->toBeNull();
+});
+
+it('drops the resource\'s own order: the board orders its columns itself', function () {
+    task('Alpha');
+    task('Beta');
+    TaskResource::$ordered = true;
+
+    expect(array_column(app(TaskBoardPage::class)->getKanban()->getCards('todo'), 'title'))->toBe(['Alpha', 'Beta']);
+});
+
+it('hides the Board and Table links from a user who may not open the page, whatever visible() says', function () {
+    $page = new class extends TaskBoardPage
+    {
+        public static function canAccess(array $parameters = []): bool
+        {
+            return false;
+        }
+    };
+
+    $resource = new class($page::class) extends TaskResource
+    {
+        public static string $page;
+
+        public function __construct(string $page)
+        {
+            self::$page = $page;
+        }
+
+        public static function getPages(): array
+        {
+            return ['index' => ListTasks::route('/'), 'kanban' => self::$page::route('/board')];
+        }
+    };
+
+    expect(KanbanAction::make()->resource($resource::class)->visible(true)->isVisible())->toBeFalse()
+        ->and(KanbanAction::make()->resource(TaskResource::class)->page('pipeline')->visible(fn () => true)->isVisible())->toBeFalse()
+        ->and(KanbanAction::make()->resource(TaskResource::class)->isVisible())->toBeTrue();
+});
+
+it('counts the board page the Board link opens, kanban before any other', function () {
+    $other = new class extends TaskBoardPage {};
+
+    $resource = new class($other::class) extends TaskResource
+    {
+        public static string $other;
+
+        public function __construct(string $other)
+        {
+            self::$other = $other;
+        }
+
+        public static function getPages(): array
+        {
+            return ['pipeline' => self::$other::route('/pipeline'), 'kanban' => TaskBoardPage::route('/board')];
+        }
+    };
+
+    expect($resource::getKanbanPage())->toBe(TaskBoardPage::class);
+});
+
+it('shows no badge, and reports why, when the board cannot count without mount()', function () {
+    Exceptions::fake();
+    TaskBoardPage::$query = fn () => throw new RuntimeException('needs mount()');
+
+    expect(TaskResource::getNavigationBadge())->toBeNull();
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'needs mount()');
 });
 
 /** @return array<string, string|null> the main navigation's items, label => badge */

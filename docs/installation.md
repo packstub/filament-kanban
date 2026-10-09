@@ -83,7 +83,7 @@ A card that falls out of the query (someone else archived it, the user lost acce
 
 `KanbanResourcePage` knows its resource, so three things come for free.
 
-**The query.** Leave `query()` out and the board shows the resource's records: `getEloquentQuery()`, evaluated on every call, so the panel's tenant and the resource's own scopes (soft deletes, a `where` you added there) apply to the board as they do to the table. Set `query()` to narrow or eager-load; it replaces the default, so start it from the resource's query when you want to keep its scopes:
+**The query.** Leave `query()` out and the board shows the resource's records: `getEloquentQuery()`, evaluated on every call, so the panel's tenant and the resource's own scopes (soft deletes, a `where` you added there) apply to the board as they do to the table. A nested resource's board is limited to the parent record, as its list is. An `orderBy` in `getEloquentQuery()` (the table's default order) is dropped: the board orders cards by its own `reorderable()` position and `sortBy()`. Set `query()` to narrow or eager-load; it replaces the default, so start it from the resource's query when you want to keep its scopes:
 
 ```php
 public function kanban(Board $board): Board
@@ -116,11 +116,11 @@ protected function getHeaderActions(): array
 }
 ```
 
-`KanbanAction` links to the resource's `kanban` page, or its `board` page when there is no `kanban`; `->page('pipeline')` names another, and the button is hidden when the resource has no such page. It is a Filament action, so `->label()`, `->icon()`, `->color()` and `->outlined()` work as usual.
+`KanbanAction` links to the resource's `kanban` page, or its `board` page when there is no `kanban`; `->page('pipeline')` names another, and the button is hidden when the resource has no such page or the user may not open it (the page's `canAccess()`), whatever `visible()` you add. On a nested resource the parent's route parameters are taken from the current page. It is a Filament action, so `->label()`, `->icon()`, `->color()` and `->outlined()` work as usual.
 
 The "Table" button is the board page's default `getHeaderActions()`, shown when the resource has an `index` page. Override the method to add to it (`[TableAction::make(), CreateAction::make()]`) or to drop it (`[]`). Outside a resource page, both actions take the resource explicitly: `KanbanAction::make()->resource(TaskResource::class)`.
 
-**The navigation badge.** The sidebar shows the resource, not its pages, so the badge goes on the resource. The `HasKanbanNavigationBadge` trait makes the resource's badge the number of cards the user may see on its board page (the first `KanbanResourcePage` in `getPages()`), counted in one grouped query over the visible columns; no badge when the board is empty, and the resource's own badge for a user who cannot open the board page:
+**The navigation badge.** The sidebar shows the resource, not its pages, so the badge goes on the resource. The `HasKanbanNavigationBadge` trait makes the resource's badge the number of cards the user may see on its board page (the one `KanbanAction` opens: `kanban`, then `board`, else the first `KanbanResourcePage` in `getPages()`), counted once per request in one grouped query over the visible columns, without the search, filters or columns a user hid in the browser; no badge when the board is empty, and the resource's own badge for a user who cannot open the board page:
 
 ```php
 use Packstub\Kanban\Concerns\HasKanbanNavigationBadge;
@@ -131,7 +131,7 @@ class TaskResource extends Resource
 }
 ```
 
-For your own badge, `TaskBoard::getBoardCount()` gives the number. It builds the page without `mount()`, so a `kanban()` that reads state set in `mount()` or a public property counts without it.
+For your own badge, `TaskBoard::getBoardCount()` gives the number. It builds the page without `mount()`, so a `kanban()` that reads state set in `mount()` or a public property counts without it; should that throw, the badge trait reports the exception and shows no badge rather than break the sidebar on every page.
 
 A standalone `KanbanPage` is its own navigation item: `protected static bool $navigationBadgeFromBoard = true;` on the page shows the same count. Off (the default), building the navigation never touches the database.
 

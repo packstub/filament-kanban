@@ -13,9 +13,12 @@ class TaskResource extends Resource
 
     protected static ?string $model = Task::class;
 
+    /** Set by a test: the resource's list orders by title, newest first. */
+    public static bool $ordered = false;
+
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->whereNull('project_id');
+        return parent::getEloquentQuery()->whereNull('project_id')->when(static::$ordered, fn (Builder $query) => $query->orderByDesc('title'));
     }
 
     public static function getPages(): array

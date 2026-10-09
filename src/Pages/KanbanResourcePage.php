@@ -22,22 +22,23 @@ abstract class KanbanResourcePage extends Page
     protected Width|string|null $maxContentWidth = Width::Full;
 
     /**
-     * The board, on the resource's query (getEloquentQuery(): tenancy and the
-     * resource's scopes included, evaluated on every call) unless kanban() set one.
+     * Without a query() of its own, the board shows the resource's records:
+     * getEloquentQuery() (tenancy and the resource's scopes included, evaluated on every
+     * call), limited to the parent record for a nested resource, as its list is. The
+     * resource's own order is dropped: the board orders its columns itself.
      */
-    public function getKanban(): Board
+    protected function kanbanDefaults(Board $board): Board
     {
-        if ($this->kanbanBoard) {
-            return $this->kanbanBoard;
-        }
-
-        $board = $this->kanban(Board::make()->key(static::class));
-
         if (! $board->hasQuery()) {
-            $board->query(fn () => static::getResource()::getEloquentQuery());
+            $board->query(function () {
+                $query = static::getResource()::getEloquentQuery()->reorder();
+                $parent = $this->getParentRecord();
+
+                return $parent ? static::getResource()::scopeEloquentQueryToParent($query, $parent) : $query;
+            });
         }
 
-        return $this->kanbanBoard = $board;
+        return $board;
     }
 
     /** A "Table" link back to the list by default; override to add to it or drop it. */
