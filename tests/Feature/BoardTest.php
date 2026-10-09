@@ -283,6 +283,14 @@ it('broadcasts on a private channel named after the key unless told otherwise, w
         ->and($event->broadcastWith())->toBe(['board' => 'deals', 'id' => '3', 'from' => 'todo', 'to' => 'doing', 'origin' => 'tab1']);
 });
 
+it('offers an undo for five seconds unless told otherwise', function () {
+    expect(board()->getUndo())->toBe(5)
+        ->and(board()->undo(false)->getUndo())->toBeNull()
+        ->and(board()->undo(10)->getUndo())->toBe(10)
+        ->and(board()->undo(0)->getUndo())->toBe(1)
+        ->and(board()->undo(false)->undo()->getUndo())->toBe(5);
+});
+
 it('reads the poll interval', function (string|int|null $interval, ?int $ms) {
     expect(board()->poll($interval)->getPoll())->toBe($ms);
 })->with([

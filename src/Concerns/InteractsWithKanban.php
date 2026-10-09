@@ -108,6 +108,7 @@ trait InteractsWithKanban
             'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
             'focus' => $board->hasFocusMode(),
             'poll' => $board->getPoll(),
+            'undo' => $board->getUndo(),
             'broadcast' => $board->isBroadcasting() ? ['channel' => $board->getBroadcastChannel(), 'event' => $board->getBroadcastEvent()] : null,
             'cardActions' => array_map(fn ($action) => [
                 'name' => $action->getName(),

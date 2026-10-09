@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Exceptions;
 use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Events\BoardChanged;
+use Packstub\Kanban\Events\CardMoved;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
@@ -110,6 +111,25 @@ it('tells the other tabs about a move only when the board broadcasts, with the t
         ->assertReturned(fn ($result) => $result['ok'] === false);
 
     Event::assertDispatchedTimes(BoardChanged::class, 1);
+});
+
+it('undoes a move as a move back, through the rules and the events again', function () {
+    Event::fake([CardMoved::class]);
+    $task = task('Build');
+
+    $test = Livewire::test(TaskBoard::class);
+
+    expect($test->instance()->getKanbanConfig()['undo'])->toBe(5);
+
+    $test->call('kanbanMove', (string) $task->id, 'doing')
+        ->assertReturned(fn ($result) => $result['ok'] === true)
+        ->call('kanbanMove', (string) $task->id, 'todo')
+        ->assertReturned(fn ($result) => $result['ok'] === true);
+
+    expect($task->fresh()->status)->toBe('todo');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->from === 'todo' && $e->to === 'doing');
+    Event::assertDispatched(CardMoved::class, fn (CardMoved $e) => $e->from === 'doing' && $e->to === 'todo');
+    Event::assertDispatchedTimes(CardMoved::class, 2);
 });
 
 it('never moves into a column this user cannot see', function () {

@@ -22,6 +22,7 @@
     x-data="packstubKanban(@js($config))"
     x-on:keydown.escape.window="menu = null"
     x-on:packstub-kanban-refresh.window="refresh(true)"
+    x-on:packstub-kanban-undo.window="undo($event.detail)"
     class="pk"
     :class="{ 'pk-is-dragging': dragging }"
 >

@@ -183,7 +183,30 @@ export default function packstubKanban(config) {
             this.$nextTick(() => this.$refs.board.querySelector(`.pk-cards[data-column="${CSS.escape(to)}"]`)?.scrollTo({ top: 0, behavior: 'smooth' }))
         },
 
-        move(id, from, to, index) {
+        // Undo is a move back, through every rule and moveUsing() again; a refusal shows as usual.
+        undo(detail) {
+            if (! detail || detail.key !== config.key) return
+            this.move(detail.id, detail.to, detail.from, config.reorderable ? detail.index : 0, { undo: true })
+        },
+
+        offerUndo(id, from, to, index) {
+            if (! config.undo || ! window.FilamentNotification || ! window.FilamentNotificationAction) return
+
+            new window.FilamentNotification()
+                .title(this.t.moved_to.replace(':column', this.findColumn(to)?.label ?? to))
+                .success()
+                .duration(config.undo * 1000)
+                .actions([
+                    new window.FilamentNotificationAction('undo')
+                        .label(this.t.undo)
+                        .button()
+                        .close()
+                        .dispatch('packstub-kanban-undo', { key: config.key, id, from, to, index }),
+                ])
+                .send()
+        },
+
+        move(id, from, to, index, options = {}) {
             const source = this.findColumn(from)
             const target = this.findColumn(to)
             const at = source.cards.findIndex((c) => c.id === id)
@@ -230,6 +253,7 @@ export default function packstubKanban(config) {
 
                     if (from !== to) {
                         this.$dispatch('kanban-card-moved', { id, from, to, card: result.card })
+                        if (! options.undo) this.offerUndo(id, from, to, at)
                     }
 
                     const now = target.cards.findIndex((c) => c.id === id)

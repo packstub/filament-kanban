@@ -125,6 +125,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from)`. |
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
+| `undo(bool\|int)` | `5` | "Undo" on the notification after a move, for this many seconds; `false` for none. |
 | `broadcast(string\|Closure\|null, string)` | off | Reload the other tabs through Echo: the private channel (default `kanban.<key>`) and the event name (`.kanban.changed`). |
 | `focusMode(bool)` | `true` | Hide the sidebar on the board page. |
 | `key(string)` | the page class | Where the browser keeps a user's view. |

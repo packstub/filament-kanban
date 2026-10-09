@@ -62,6 +62,8 @@ class Board
 
     protected ?int $poll = null;
 
+    protected ?int $undo = 5;
+
     protected string|Closure|null $broadcastChannel = null;
 
     protected ?string $broadcastEvent = null;
@@ -242,6 +244,22 @@ class Board
     }
 
     /**
+     * An "Undo" on the notification after a move, for this many seconds (5 by default;
+     * false for none). Undoing is a move back through every rule and moveUsing(), so
+     * nothing is restored behind their back.
+     */
+    public function undo(bool|int $condition = true): static
+    {
+        $this->undo = match (true) {
+            $condition === false => null,
+            $condition === true => 5,
+            default => max(1, $condition),
+        };
+
+        return $this;
+    }
+
+    /**
      * Broadcast a BoardChanged event (queued, on a private channel) after every change,
      * so the other tabs listening with Laravel Echo reload at once instead of polling.
      * The channel is yours to authorise in routes/channels.php; by default it is
@@ -340,6 +358,12 @@ class Board
     public function getPoll(): ?int
     {
         return $this->poll;
+    }
+
+    /** Seconds the "Undo" stays offered after a move; null when off. */
+    public function getUndo(): ?int
+    {
+        return $this->undo;
     }
 
     public function isBroadcasting(): bool

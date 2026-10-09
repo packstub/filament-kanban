@@ -21,4 +21,6 @@ return [
     'card_menu' => 'Kartenaktionen',
     'limit' => 'Limit: :limit Karten',
     'full' => ':column ist voll (Limit :limit).',
+    'moved_to' => 'Verschoben nach :column',
+    'undo' => 'Rückgängig',
 ];

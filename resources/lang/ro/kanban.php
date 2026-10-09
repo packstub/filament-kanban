@@ -21,4 +21,6 @@ return [
     'card_menu' => 'Acțiuni card',
     'limit' => 'Limită: :limit carduri',
     'full' => ':column este plină (limita :limit).',
+    'moved_to' => 'Mutat în :column',
+    'undo' => 'Anulează',
 ];

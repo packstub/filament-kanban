@@ -4,6 +4,7 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
+- Undo a move: the notification after a move ("Moved to Done") offers an **Undo** for five seconds (`undo(10)` for longer, `undo(false)` for none). Undo is a move back through every rule and `moveUsing()`, with `CardMoved` fired for the reverse move; a refusal shows as usual.
 - Realtime with Laravel Echo: `broadcast()` sends a queued `BoardChanged` event on a private channel (`kanban.<key>` by default, or yours) after every move, card action and create, and the other tabs showing the board reload at once instead of polling; the tab that made the change ignores its own event, and a burst of events is one request. `poll()` still works without Echo, and both may be set.
 - Fixed: a move refused by a `MoveRejected` still shows its message; any other exception thrown while saving (the database's, `moveUsing()`'s) is reported to the exception handler and answered with "The move did not go through." instead of its text, so a query with its bindings never reaches a notification. `Board::move()` lets such an exception propagate. Throw `MoveRejected` from `moveUsing()` for a message the user should see.
 - Fixed: the board no longer flashes unstyled on page load (a search icon the width of the page) before its stylesheet, loaded on request, applies; it stays hidden until then.
