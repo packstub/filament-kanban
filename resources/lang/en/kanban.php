@@ -3,7 +3,12 @@
 return [
     'search' => 'Search',
     'all' => 'All',
-    'clear' => 'Clear',
+    'yes' => 'Yes',
+    'no' => 'No',
+    'filters' => 'Filters',
+    'reset_filters' => 'Reset filters',
+    'from' => 'From',
+    'until' => 'Until',
     'columns' => 'Columns',
     'show_sidebar' => 'Show menu',
     'hide_sidebar' => 'Hide menu',

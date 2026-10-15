@@ -14,6 +14,7 @@ use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Conditionable;
+use Packstub\Kanban\Enums\FiltersLayout;
 use Packstub\Kanban\Events\BoardChanged;
 use Packstub\Kanban\Events\BoardChangedNow;
 use Packstub\Kanban\Events\CardMoved;
@@ -53,6 +54,8 @@ class Board
 
     /** @var list<Filter> */
     protected array $filters = [];
+
+    protected FiltersLayout|string|null $filtersLayout = null;
 
     protected int $perColumn = 50;
 
@@ -204,6 +207,14 @@ class Board
     public function filters(array $filters): static
     {
         $this->filters = $filters;
+
+        return $this;
+    }
+
+    /** Where the filters are shown: behind a funnel button (the default), inline in the toolbar, or on a row above the columns; the config's `filters_layout` otherwise. */
+    public function filtersLayout(FiltersLayout|string|null $layout): static
+    {
+        $this->filtersLayout = $layout;
 
         return $this;
     }
@@ -506,6 +517,23 @@ class Board
     public function getFilters(): array
     {
         return $this->filters;
+    }
+
+    public function getFilter(string $name): ?Filter
+    {
+        foreach ($this->filters as $filter) {
+            if ($filter->getName() === $name) {
+                return $filter;
+            }
+        }
+
+        return null;
+    }
+
+    /** The definition's layout, else the config's `filters_layout` (a value that is no layout throws). */
+    public function getFiltersLayout(): FiltersLayout
+    {
+        return FiltersLayout::fromConfig($this->filtersLayout ?? config('packstub-kanban.filters_layout'));
     }
 
     public function isSearchable(): bool

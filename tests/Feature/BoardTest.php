@@ -147,7 +147,8 @@ it('applies a multiple filter with whereIn and drops the values it does not offe
     $filter = Filter::make('project_id')->multiple()->options(fn () => [$acme->id => 'Acme', $globex->id => 'Globex']);
     $board = board()->filters([$filter]);
 
-    expect($filter->getType())->toBe('multiple')
+    expect($filter->getType())->toBe('select')
+        ->and($filter->isMultiple())->toBeTrue()
         ->and(array_column($board->getCards('todo', filters: ['project_id' => [(string) $acme->id, $globex->id]]), 'title'))->toBe(['A', 'B'])
         ->and(array_column($board->getCards('todo', filters: ['project_id' => [$acme->id, $initech->id, 999, '', ['nested']]]), 'title'))->toBe(['A'])
         ->and(array_column($board->getCards('todo', filters: ['project_id' => [$initech->id]]), 'title'))->toBe(['A', 'B', 'C', 'D'])
@@ -167,7 +168,7 @@ it('applies a toggle filter only when it is on, through its required query', fun
     task('Urgent', 'todo', ['priority' => 9]);
     task('Calm', 'todo', ['priority' => 1]);
 
-    $filter = Filter::make('urgent')->toggle()->query(fn (Builder $query, bool $on) => $query->where('priority', '>', 5));
+    $filter = Filter::toggle('urgent')->query(fn (Builder $query, bool $on) => $query->where('priority', '>', 5));
     $board = board()->filters([$filter]);
 
     expect($filter->getType())->toBe('toggle')
@@ -178,12 +179,11 @@ it('applies a toggle filter only when it is on, through its required query', fun
         ->and(array_column($board->getCards('todo', filters: ['urgent' => '0']), 'title'))->toBe(['Urgent', 'Calm'])
         ->and(array_column($board->getCards('todo', filters: ['urgent' => ['1']]), 'title'))->toBe(['Urgent', 'Calm'])
         ->and(array_column($board->getCards('todo'), 'title'))->toBe(['Urgent', 'Calm'])
-        ->and(fn () => board()->filters([Filter::make('urgent')->toggle()])->getCards('todo', filters: ['urgent' => true]))->toThrow(LogicException::class, 'query()')
-        ->and(fn () => Filter::make('urgent')->toggle()->assertUsable())->toThrow(LogicException::class)
-        ->and(Filter::make('urgent')->toggle()->toggle(false)->getType())->toBe('select')
-        ->and(Filter::make('owner_id')->multiple()->multiple(false)->getType())->toBe('select')
-        ->and(Filter::make('owner_id')->multiple()->toggle(false)->getType())->toBe('multiple')
-        ->and(Filter::make('urgent')->toggle()->multiple(false)->getType())->toBe('toggle');
+        ->and(fn () => board()->filters([Filter::toggle('urgent')])->getCards('todo', filters: ['urgent' => true]))->toThrow(LogicException::class, 'query()')
+        ->and(fn () => Filter::toggle('urgent')->assertUsable())->toThrow(LogicException::class)
+        ->and(Filter::make('owner_id')->multiple()->multiple(false)->isMultiple())->toBeFalse()
+        ->and(Filter::toggle('urgent')->multiple()->isMultiple())->toBeFalse() // multiple() is a select's; a toggle stays a toggle
+        ->and(Filter::toggle('urgent')->getType())->toBe('toggle');
 });
 
 it('resolves the options once per request, and not at all while the filter is not set', function () {

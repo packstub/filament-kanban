@@ -13,12 +13,17 @@ composer lint               # Pint
 
 ## Layout
 
-- `src/Board.php` (definition + reads + the server-side move rules), `Column.php`, `Card.php`, `Filter.php`.
+- `src/Board.php` (definition + reads + the server-side move rules), `Column.php`, `Card.php`, `Filter.php` (the one
+  Filter class shared with Gantt and Spreadsheet: select / multiple / searchable / boolean / toggle / dateRange) and
+  `Enums/FiltersLayout.php`; `config/packstub-kanban.php` (`filters_layout`, `date_format`, `first_day_of_week`).
 - `src/Concerns/InteractsWithKanban.php` (the Livewire side), `src/Concerns/KanbanActions.php` (card and create
   actions wired into Filament's action system: record through the board's query, hidden/after/mutate chained onto
   the app's own), `src/Pages/Kanban{,Resource}Page.php`, `src/Events/CardMoved.php`.
-- `resources/views/board.blade.php`, `resources/dist/kanban.{js,css}` — hand-written, no build step. After editing
-  them in a consuming app, run `php artisan filament:assets` there (assets are copied, not linked).
+- `resources/views/board.blade.php` (a table-style container on Filament's own components, `ps-kanban-*` hooks),
+  `filters.blade.php` + `partials/{select,date-picker}.blade.php` (the filter fields, shared with Gantt and Spreadsheet),
+  `resources/dist/kanban.{js,css}` — hand-written, no build step; `kanban.css` starts with the shell shared by the three
+  plugins (`--ps-kanban-*` variables). After editing them in a consuming app, run `php artisan filament:assets` there
+  (assets are copied, not linked).
 - `tests/Fixtures/TaskBoard.php` — a plain Livewire component (with Filament actions) holding a board, used by the
   Livewire and action tests.
 - `docs/` — the packstub.dev pages (synced by `docs-sync.yml`); `docs/images/` is taken by

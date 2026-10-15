@@ -44,7 +44,7 @@ class TaskBoard extends Component implements HasActions, HasSchemas
             ->searchable(['title', 'project.name'])
             ->filters([
                 Filter::make('project_id')->multiple()->options(fn () => Project::pluck('name', 'id')->all()),
-                Filter::make('urgent')->toggle()->query(fn ($query) => $query->where('priority', '>', 5)),
+                Filter::toggle('urgent')->query(fn ($query) => $query->where('priority', '>', 5)),
             ])
             ->columns(array_map(fn (string $name) => Column::make($name)
                 ->visible(static::$visible === null || in_array($name, static::$visible, true))
