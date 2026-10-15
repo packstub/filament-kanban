@@ -3,7 +3,12 @@
 return [
     'search' => 'Поиск',
     'all' => 'Все',
-    'clear' => 'Сбросить',
+    'yes' => 'Да',
+    'no' => 'Нет',
+    'filters' => 'Фильтры',
+    'reset_filters' => 'Сбросить фильтры',
+    'from' => 'С',
+    'until' => 'По',
     'columns' => 'Колонки',
     'show_sidebar' => 'Показать меню',
     'hide_sidebar' => 'Скрыть меню',

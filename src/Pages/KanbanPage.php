@@ -20,7 +20,7 @@ abstract class KanbanPage extends Page
     public function getExtraBodyAttributes(): array
     {
         return $this->getKanban()->hasFocusMode()
-            ? ['class' => trim(($this->extraBodyAttributes['class'] ?? '').' pk-focus')] + $this->extraBodyAttributes
+            ? ['class' => trim(($this->extraBodyAttributes['class'] ?? '').' ps-kanban-focus')] + $this->extraBodyAttributes
             : $this->extraBodyAttributes;
     }
 }

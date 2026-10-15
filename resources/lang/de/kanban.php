@@ -3,7 +3,12 @@
 return [
     'search' => 'Suchen',
     'all' => 'Alle',
-    'clear' => 'Zurücksetzen',
+    'yes' => 'Ja',
+    'no' => 'Nein',
+    'filters' => 'Filter',
+    'reset_filters' => 'Filter zurücksetzen',
+    'from' => 'Von',
+    'until' => 'Bis',
     'columns' => 'Spalten',
     'show_sidebar' => 'Menü einblenden',
     'hide_sidebar' => 'Menü ausblenden',

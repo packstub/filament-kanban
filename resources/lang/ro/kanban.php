@@ -3,7 +3,12 @@
 return [
     'search' => 'Caută',
     'all' => 'Toate',
-    'clear' => 'Șterge',
+    'yes' => 'Da',
+    'no' => 'Nu',
+    'filters' => 'Filtre',
+    'reset_filters' => 'Resetează filtrele',
+    'from' => 'De la',
+    'until' => 'Până la',
     'columns' => 'Coloane',
     'show_sidebar' => 'Arată meniul',
     'hide_sidebar' => 'Ascunde meniul',

@@ -10,16 +10,17 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 
 ## Features
 
-- **[Instant drag and drop](moves.md)**: a drop lands at once; if the server refuses, the card slides back with the reason.
-- **[Rules on the server](columns.md)**: columns from an enum, per-user columns, drop rules, read-only columns and WIP limits.
-- **[Filament actions on cards and columns](actions.md)**: edit in a slide-over, delete or run your own actions, create in a column, act on a whole column.
-- **[Column summaries](columns.md#summaries)**: a sum or an average under each column title, kept current after every move.
-- **[Light on big boards](cards.md)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](configuration.md#search)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
-- **[Swimlanes](swimlanes.md)**: rows by assignee, priority or any attribute, derived from the data or defined, folded and remembered.
-- **[Bulk selection](actions.md#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
-- **[Shared boards](configuration.md#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, and an [Undo](moves.md#undo) on every move.
-- **[Keyboard, screen readers and phones](configuration.md#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
+- **[Instant drag and drop](moves.md)**: cards land at once; a refused move slides back.
+- **[Rules on the server](columns.md)**: enum columns, drop rules, WIP limits, locked cards.
+- **[Filament actions on cards and columns](actions.md)**: edit, delete, create in a column, or your own.
+- **[Column summaries](columns.md#summaries)**: a sum or an average under each column title.
+- **[Rich, fast cards](cards.md)**: badges, due dates, progress, avatars; hundreds stay fast.
+- **[Search, filters and paging](filters.md)**: Filament's filter fields, kept in the URL.
+- **[Swimlanes](swimlanes.md)**: rows by assignee, priority or any attribute.
+- **[Bulk selection](actions.md#bulk-selection)**: move or act on many cards at once.
+- **[Shared boards](configuration.md#realtime-with-echo)**: realtime with Echo or polling, Undo on every move.
+- **[Keyboard, screen readers and phones](configuration.md#keyboard)**: every move works without a mouse.
+- **[Dark mode and translations](styling.md)**: English, Romanian, Russian and German.
 
 ## Guides
 
@@ -31,7 +32,9 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 | [Actions](actions.md) | Card actions, the click action, bulk actions on a selection, creating a card in a column, and column actions |
 | [Swimlanes](swimlanes.md) | Rows by a second attribute: derived or defined lanes, what a drop sets, folding and paging |
 | [Moves and events](moves.md) | What a move does, undo, `moveUsing()`, reordering, the `CardMoved` event and browser events |
-| [Configuration](configuration.md) | Search, filters, paging, polling, realtime with Echo, focus mode, styling, and the full fluent API |
+| [Filters](filters.md) | Select, multiple, searchable, boolean, toggle and date-range filters, where they are shown, the search and filters in the URL |
+| [Configuration](configuration.md) | Search, paging, polling, realtime with Echo, focus mode, density, and the full fluent API |
+| [Styling](styling.md) | The table-style container, the `--ps-kanban-*` variables shared with Gantt and Spreadsheet, dark mode, translations |
 
 ## At a glance
 

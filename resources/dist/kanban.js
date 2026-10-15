@@ -20,8 +20,16 @@ const TONES = {
 // Search text per card, outside Alpine's reactivity (filled while rendering).
 const TEXT = new WeakMap()
 
-// A filter's "nothing chosen", by type.
-const blankFor = (filter) => filter.type === 'multiple' ? [] : filter.type === 'toggle' ? false : ''
+// A filter's "nothing chosen" (Filter::emptyState()): '' for a select, [] for a multiple, false for a toggle, {from, until} for a date range.
+const blankFor = (filter) => filter.type === 'dateRange' ? { from: null, until: null } : filter.type === 'toggle' ? false : filter.multiple ? [] : ''
+
+// A `Y-m-d` string naming a real calendar date, or null (as Filter::date() on the server).
+function isoDay(value) {
+    const m = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (! m || +m[1] < 1000) return null
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+    return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3] ? m[1] + '-' + m[2] + '-' + m[3] : null
+}
 
 // One of a translation's `a|b|c` forms for a count, as Laravel's trans_choice() picks it:
 // `{n}` and `[a,b]` (`*` open) prefixes first, then the locale's plural rules.
@@ -70,7 +78,7 @@ export default function packstubKanban(config) {
         createAction: config.createAction,
         t: config.i18n,
         search: '',
-        // '' for a select, [] for a multiple, false for a toggle
+        // '' for a select, [] for a multiple, false for a toggle, {from, until} for a date range (see blankFor)
         active: Object.fromEntries(config.filters.map((f) => [f.name, blankFor(f)])),
         hidden: [],
         folded: {},
@@ -120,7 +128,7 @@ export default function packstubKanban(config) {
             }
 
             if (config.focus) {
-                document.body.classList.toggle('pk-focus-sidebar', this.sidebar)
+                document.body.classList.toggle('ps-kanban-focus-sidebar', this.sidebar)
             }
 
             this.onSlash = (event) => {
@@ -138,7 +146,7 @@ export default function packstubKanban(config) {
                 const board = this.$refs.board
                 if (! board) return
                 const top = board.getBoundingClientRect().top + window.scrollY
-                this.$root.style.setProperty('--pk-height', Math.max(360, window.innerHeight - top - 16) + 'px')
+                this.$root.style.setProperty('--ps-kanban-height', Math.max(360, window.innerHeight - top - 16) + 'px')
             }
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
@@ -190,7 +198,7 @@ export default function packstubKanban(config) {
             document.removeEventListener('visibilitychange', this.onVisible)
             clearInterval(this.clock)
             this.moreObserver?.disconnect()
-            document.body.classList.remove('pk-focus-sidebar')
+            document.body.classList.remove('ps-kanban-focus-sidebar')
             delete document.body._x_ignoreMutationObserver
         },
 
@@ -237,17 +245,17 @@ export default function packstubKanban(config) {
                     put: (to, from) => this.canDrop(from.el.dataset.column, to.el.dataset.column, from.el.dataset.lane, to.el.dataset.lane),
                 },
                 sort: config.reorderable,
-                draggable: '.pk-card',
+                draggable: '.ps-kanban-card',
                 // A locked card is filtered rather than left out of `draggable`, so Sortable's
                 // indexes still count every card and match the column's state.
-                filter: '.pk-card-locked, .pk-card-menu, .pk-card-popover, .pk-card-pending',
+                filter: '.ps-kanban-card-locked, .ps-kanban-card-menu, .ps-kanban-card-popover, .ps-kanban-card-pending',
                 preventOnFilter: false,
                 disabled: ! column.draggable && ! column.droppable,
                 animation: 150,
                 easing: 'cubic-bezier(0.2, 0, 0, 1)',
-                ghostClass: 'pk-ghost',
-                chosenClass: 'pk-chosen',
-                dragClass: 'pk-drag',
+                ghostClass: 'ps-kanban-ghost',
+                chosenClass: 'ps-kanban-chosen',
+                dragClass: 'ps-kanban-drag',
                 delay: 150,
                 delayOnTouchOnly: true,
                 forceFallback: true, // a real element follows the pointer (and works the same on touch)
@@ -284,7 +292,7 @@ export default function packstubKanban(config) {
 
             // Put the node back where Sortable took it from and let Alpine move it from
             // the state; otherwise Alpine's keyed list and the DOM disagree.
-            const cards = (list) => list.querySelectorAll(':scope > .pk-card')
+            const cards = (list) => list.querySelectorAll(':scope > .ps-kanban-card')
             event.item.remove()
             const ref = cards(event.from)[event.oldDraggableIndex] ?? null
             ref ? event.from.insertBefore(event.item, ref) : event.from.appendChild(event.item)
@@ -296,7 +304,7 @@ export default function packstubKanban(config) {
             const lane = this.findColumn(from)?.cards.find((c) => c.id === id)?.lane
             this.move(id, from, to, 0, lane)
             const cell = lane === undefined ? '' : `[data-lane="${CSS.escape(lane)}"]`
-            this.$nextTick(() => this.$refs.board.querySelector(`.pk-cards[data-column="${CSS.escape(to)}"]${cell}`)?.scrollTo({ top: 0, behavior: 'smooth' }))
+            this.$nextTick(() => this.$refs.board.querySelector(`.ps-kanban-cards[data-column="${CSS.escape(to)}"]${cell}`)?.scrollTo({ top: 0, behavior: 'smooth' }))
         },
 
         // Undo is a move back, through every rule and moveUsing() again; a refusal shows as usual.
@@ -367,10 +375,10 @@ export default function packstubKanban(config) {
             // menu closing leaves it on <body>): a late refusal never pulls focus from a
             // search box or a modal.
             // A mouse drop leaves focus alone (the link took it on mousedown, not the user).
-            const inCard = () => document.activeElement?.closest?.('.pk-card')?.dataset.id === id
+            const inCard = () => document.activeElement?.closest?.('.ps-kanban-card')?.dataset.id === id
             const onTarget = () => {
                 const el = document.activeElement
-                return !! el?.matches?.('.pk-tab, .pk-fold') && (el.dataset.column ?? el.closest('.pk-col')?.dataset.column) === to
+                return !! el?.matches?.('.ps-kanban-tab, .ps-kanban-fold') && (el.dataset.column ?? el.closest('.ps-kanban-col')?.dataset.column) === to
             }
             const focused = ! options.pointer && inCard()
             const keepFocus = () => focused && (inCard() || onTarget() || document.activeElement === document.body || ! document.activeElement)
@@ -514,18 +522,18 @@ export default function packstubKanban(config) {
         // Enter opens, Shift+F10 or the menu key opens the card's menu; inside an open
         // menu the arrows walk its items and Escape returns to the card.
         keys(event, column) {
-            const item = event.target.closest('.pk-card')
+            const item = event.target.closest('.ps-kanban-card')
             if (! item || event.altKey || event.ctrlKey || event.metaKey) return
 
-            const link = item.querySelector(':scope > .pk-card-link')
-            const menu = event.target.closest('.pk-menu')
+            const link = item.querySelector(':scope > .ps-kanban-card-link')
+            const menu = event.target.closest('.ps-kanban-menu')
 
             if (menu) {
                 if (event.key === 'Escape') {
                     this.menu = null
                     return link?.focus()
                 }
-                const items = [...menu.querySelectorAll('.pk-menu-item')]
+                const items = [...menu.querySelectorAll('.ps-kanban-menu-item')]
                 const at = items.indexOf(event.target)
                 const next = { ArrowDown: items[(at + 1) % items.length], ArrowUp: items[(at - 1 + items.length) % items.length], Home: items[0], End: items[items.length - 1] }[event.key]
                 if (next) {
@@ -538,7 +546,7 @@ export default function packstubKanban(config) {
             if (event.target !== link) return
 
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
-                const links = [...event.currentTarget.querySelectorAll(':scope > .pk-card > .pk-card-link')].filter((l) => l.offsetParent)
+                const links = [...event.currentTarget.querySelectorAll(':scope > .ps-kanban-card > .ps-kanban-card-link')].filter((l) => l.offsetParent)
                 const at = links.indexOf(link)
                 const to = event.key === 'ArrowDown' ? at + 1 : event.key === 'ArrowUp' ? at - 1 : event.key === 'Home' ? 0 : links.length - 1
                 if (links[to]) {
@@ -572,7 +580,7 @@ export default function packstubKanban(config) {
             const key = 'card:' + card.id
             this.menu = this.menu === key ? null : key
             if (this.menu) {
-                this.$nextTick(() => this.$root.querySelector(`.pk-card[data-id="${CSS.escape(card.id)}"] .pk-menu-item`)?.focus())
+                this.$nextTick(() => this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(card.id)}"] .ps-kanban-menu-item`)?.focus())
             }
         },
 
@@ -581,13 +589,13 @@ export default function packstubKanban(config) {
         // button takes the focus instead, so it never drops to <body>.
         refocus(id, column) {
             this.$nextTick(() => {
-                const link = this.$root.querySelector(`.pk-card[data-id="${CSS.escape(id)}"] > .pk-card-link`)
+                const link = this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(id)}"] > .ps-kanban-card-link`)
                 if (link?.offsetParent) return link.focus()
 
                 const name = CSS.escape(column ?? '')
                 const fallback = this.narrow
-                    ? this.$refs.tabs?.querySelector(`.pk-tab[data-column="${name}"]`)
-                    : this.$refs.board?.querySelector(`.pk-col[data-column="${name}"] .pk-fold`)
+                    ? this.$refs.tabs?.querySelector(`.ps-kanban-tab[data-column="${name}"]`)
+                    : this.$refs.board?.querySelector(`.ps-kanban-col[data-column="${name}"] .ps-kanban-fold`)
                 fallback?.focus()
             })
         },
@@ -633,12 +641,12 @@ export default function packstubKanban(config) {
             this.tab = name
             this.menu = null
             this.persist()
-            this.$nextTick(() => this.$refs.tabs?.querySelector('.pk-tab-on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
+            this.$nextTick(() => this.$refs.tabs?.querySelector('.ps-kanban-tab.fi-active')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
         },
 
         // Roving tabindex on the tab bar: the arrows (wrapping), Home and End select and focus the next tab.
         tabKeys(event) {
-            const tabs = [...event.currentTarget.querySelectorAll('.pk-tab')].filter((t) => t.offsetParent)
+            const tabs = [...event.currentTarget.querySelectorAll('.ps-kanban-tab')].filter((t) => t.offsetParent)
             const at = tabs.indexOf(event.target)
             if (at < 0) return
 
@@ -938,16 +946,40 @@ export default function packstubKanban(config) {
             })
         },
 
+        /** Whether a filter narrows the board: a value, a non-empty list, an on toggle, either end of a range. */
         isActive(filter) {
             const value = this.active[filter.name]
 
-            return filter.type === 'multiple' ? value.length > 0 : filter.type === 'toggle' ? value === true : value !== ''
+            if (filter.type === 'dateRange') return !! (value?.from || value?.until)
+            if (filter.type === 'toggle') return value === true
+            if (filter.multiple) return Array.isArray(value) && value.length > 0
+
+            return value !== '' && value !== null && value !== undefined
         },
 
-        // A few quick clicks are one request (as typing in the search is).
-        toggleOption(filter, value) {
-            const current = this.active[filter.name]
-            this.active[filter.name] = current.includes(value) ? current.filter((v) => v !== value) : [...current, value]
+        /** How many filters narrow the board (the funnel's badge). */
+        activeFilterCount() {
+            return this.filters.filter((f) => this.isActive(f)).length
+        },
+
+        /** An option chosen in a select filter (null or '' is "all"; a list for a multiple one). A few quick picks are one request. */
+        pickSelect(name, value) {
+            const filter = this.filters.find((f) => f.name === name)
+            if (! filter) return
+            const next = filter.multiple
+                ? (Array.isArray(value) ? value : (value === null || value === undefined || value === '' ? [] : [value])).map(String)
+                : (value === null || value === undefined ? '' : String(value))
+            if (JSON.stringify(this.active[name]) === JSON.stringify(next)) return
+            this.active[name] = next
+            this.queueRefresh()
+        },
+
+        /** A day picked for one end of a date-range filter: the day as `Y-m-d` (from the picker's `Y-m-d H:i:s`), or null when cleared. */
+        pickFilter(name, edge, value) {
+            const day = isoDay(value)
+            const current = this.active[name] || { from: null, until: null }
+            if ((current[edge] ?? null) === day) return
+            this.active[name] = { ...current, [edge]: day }
             this.queueRefresh()
         },
 
@@ -961,26 +993,20 @@ export default function packstubKanban(config) {
             this.queueRefresh()
         },
 
-        // The filter popover opens rightwards, or leftwards when that would leave the screen.
-        openFilter(filter, button) {
-            const key = 'filter:' + filter.name
-            this.menu = this.menu === key ? null : key
-            if (! this.menu) return
-
-            this.$nextTick(() => {
-                const popover = button.parentElement.querySelector('.pk-filter-menu')
-                popover?.classList.remove('pk-menu-end')
-                if (popover && popover.getBoundingClientRect().right > document.documentElement.clientWidth - 8) {
-                    popover.classList.add('pk-menu-end')
-                }
-            })
+        /** Every filter back to "nothing chosen", one request. */
+        resetFilters() {
+            for (const filter of this.filters) {
+                this.active[filter.name] = blankFor(filter)
+            }
+            this.refresh()
         },
 
         /* ------------------------------------------------------------ the URL */
 
-        // `?search=…&filters[owner_id][0]=1&filters[owner_id][1]=2&filters[mine]=1`: only the
-        // filters the board defines are read, only values among their options are kept
-        // (the server checks them again), and a toggle is on for 1, true, on or yes.
+        // `?search=…&filters[owner_id][0]=1&filters[owner_id][1]=2&filters[mine]=1&filters[due][from]=2026-01-01`:
+        // only the filters the board defines are read, only values among their options are
+        // kept (any value for a searchable select; the server checks them again), a toggle is
+        // on for 1, true, on or yes, and a date range takes real calendar days only.
         readUrl() {
             let found = false
 
@@ -994,23 +1020,35 @@ export default function packstubKanban(config) {
                 }
 
                 const sent = {}
+                const edges = {}
                 for (const [key, value] of params) {
-                    const m = key.match(/^filters\[([^\]]+)\](?:\[\d*\])?$/)
-                    if (m && value !== '') (sent[m[1]] ??= []).push(value)
+                    const m = key.match(/^filters\[([^\]]+)\](?:\[(\d*|from|until)\])?$/)
+                    if (! m || value === '') continue
+                    if (m[2] === 'from' || m[2] === 'until') (edges[m[1]] ??= {})[m[2]] = value
+                    else (sent[m[1]] ??= []).push(value)
                 }
 
                 for (const filter of this.filters) {
                     const values = sent[filter.name] || []
                     const offered = filter.options.map((o) => o.value)
-                    const known = [...new Set(values.filter((v) => offered.includes(v)))]
+                    const known = [...new Set(filter.searchable ? values : values.filter((v) => offered.includes(v)))]
 
-                    if (filter.type === 'multiple' && known.length) {
+                    if (filter.type === 'dateRange') {
+                        const from = isoDay(edges[filter.name]?.from)
+                        const until = isoDay(edges[filter.name]?.until)
+                        if (from || until) {
+                            this.active[filter.name] = { from, until }
+                            found = true
+                        }
+                    } else if (filter.type === 'toggle') {
+                        if (values.length && ['1', 'true', 'on', 'yes'].includes(values[0].toLowerCase())) {
+                            this.active[filter.name] = true
+                            found = true
+                        }
+                    } else if (filter.multiple && known.length) {
                         this.active[filter.name] = known
                         found = true
-                    } else if (filter.type === 'toggle' && values.length && ['1', 'true', 'on', 'yes'].includes(values[0].toLowerCase())) {
-                        this.active[filter.name] = true
-                        found = true
-                    } else if (filter.type === 'select' && known.length) {
+                    } else if (! filter.multiple && known.length) {
                         this.active[filter.name] = known[0]
                         found = true
                     }
@@ -1032,7 +1070,7 @@ export default function packstubKanban(config) {
                 // Only what this board owns is replaced: other parameters (another component's
                 // `filters[...]`, a `search` the board does not use) stay as they are.
                 const names = new Set(this.filters.map((f) => f.name))
-                const owned = (key) => (key === 'search' && config.searchable) || names.has(key.match(/^filters\[([^\]]+)\](?:\[\d*\])?$/)?.[1])
+                const owned = (key) => (key === 'search' && config.searchable) || names.has(key.match(/^filters\[([^\]]+)\](?:\[(?:\d*|from|until)\])?$/)?.[1])
                 const url = new URL(window.location.href)
                 const pairs = [...url.searchParams].filter(([key]) => ! owned(key))
 
@@ -1042,11 +1080,14 @@ export default function packstubKanban(config) {
                 for (const filter of this.filters) {
                     const value = this.active[filter.name]
 
-                    if (filter.type === 'multiple') {
-                        value.forEach((v, i) => pairs.push([`filters[${filter.name}][${i}]`, v]))
+                    if (filter.type === 'dateRange') {
+                        if (value?.from) pairs.push([`filters[${filter.name}][from]`, value.from])
+                        if (value?.until) pairs.push([`filters[${filter.name}][until]`, value.until])
                     } else if (filter.type === 'toggle') {
                         if (value === true) pairs.push([`filters[${filter.name}]`, '1'])
-                    } else if (value !== '') {
+                    } else if (filter.multiple) {
+                        (value || []).forEach((v, i) => pairs.push([`filters[${filter.name}][${i}]`, v]))
+                    } else if (value !== '' && value !== null && value !== undefined) {
                         pairs.push([`filters[${filter.name}]`, value])
                     }
                 }
@@ -1095,7 +1136,7 @@ export default function packstubKanban(config) {
                     // Still in view (a short page)? Observing again reports it, and the next page loads.
                     this.$nextTick(() => {
                         const cell = this.lanes ? `[data-lane="${CSS.escape(lane.value)}"]` : ''
-                        const el = this.$root.querySelector(`.pk-more[data-column="${CSS.escape(column.name)}"]${cell}`)
+                        const el = this.$root.querySelector(`.ps-kanban-more[data-column="${CSS.escape(column.name)}"]${cell}`)
                         if (el && this.moreObserver) {
                             this.moreObserver.unobserve(el)
                             this.moreObserver.observe(el)
@@ -1123,7 +1164,7 @@ export default function packstubKanban(config) {
 
         toggleSidebar() {
             this.sidebar = ! this.sidebar
-            document.body.classList.toggle('pk-focus-sidebar', this.sidebar)
+            document.body.classList.toggle('ps-kanban-focus-sidebar', this.sidebar)
             this.persist()
         },
 
@@ -1236,7 +1277,7 @@ export default function packstubKanban(config) {
         gridStyle() {
             if (! this.lanes) return {}
             if (this.narrow) return { 'grid-template-columns': 'minmax(0, 1fr)' }
-            const widths = this.gridColumns().map((c) => this.folded[c.name] ? 'var(--pk-folded-width)' : 'var(--pk-col-width)')
+            const widths = this.gridColumns().map((c) => this.folded[c.name] ? 'var(--ps-kanban-folded-width)' : 'var(--ps-kanban-col-width)')
             return { 'grid-template-columns': widths.join(' ') }
         },
 
@@ -1288,7 +1329,7 @@ export default function packstubKanban(config) {
         // Past or today, by the ISO date in the viewer's own calendar day.
         dueState(due) {
             if (! due?.date) return ''
-            return due.date < this.today ? 'pk-due-past' : (due.date === this.today ? 'pk-due-today' : '')
+            return due.date < this.today ? 'ps-kanban-due-past' : (due.date === this.today ? 'ps-kanban-due-today' : '')
         },
 
         notify(message, status) {
