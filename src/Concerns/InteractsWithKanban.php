@@ -4,6 +4,7 @@ namespace Packstub\Kanban\Concerns;
 
 use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
+use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\IconSize;
 use Filament\Support\View\ComponentAttributeBag;
@@ -210,6 +211,10 @@ trait InteractsWithKanban
      */
     public function mountInteractsWithKanban(): void
     {
+        if (! $this instanceof HasSchemas) {
+            throw new \LogicException(static::class.' must implement Filament\\Schemas\\Contracts\\HasSchemas and use Filament\\Schemas\\Concerns\\InteractsWithSchemas: the filters are Filament form components (the Kanban pages do).');
+        }
+
         $this->getSchema('kanbanFiltersForm')?->fill();
 
         $board = $this->getKanban();
