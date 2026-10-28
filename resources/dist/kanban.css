@@ -180,6 +180,7 @@
 
 /* The ghost is outside .ps-kanban: the shell's colour variables again, for it alone. */
 .sortable-fallback.ps-kanban-card {
+    list-style: none; /* a lone <li> on the body would show the browser's bullet */
     --ps-kanban-text: var(--gray-950);
     --ps-kanban-muted: var(--gray-500);
     --ps-kanban-soft: var(--gray-600);
