@@ -5,6 +5,11 @@
     $config = $this->getKanbanConfig();
     $hasFilters = $config['filters'] !== [];
     $filtersLayout = $config['filtersLayout'];
+
+    // The filters are Filament form components, rendered through a schema.
+    if (! $this instanceof \Filament\Schemas\Contracts\HasSchemas) {
+        throw new \LogicException(static::class . ' must implement Filament\Schemas\Contracts\HasSchemas and use Filament\Schemas\Concerns\InteractsWithSchemas (the Kanban pages do).');
+    }
 @endphp
 
 {{--
@@ -37,6 +42,7 @@
     x-on:keydown.escape.window="menu = null; clearSelection()"
     x-on:packstub-kanban-refresh.window="refresh(true)"
     x-on:packstub-kanban-undo.window="undo($event.detail)"
+    x-on:ps-kanban-filter="setFilter($event.detail.name, $event.detail.value, $event.detail.edge)"
     x-on:scroll.capture.passive="menuScrolled()"
     x-on:scroll.window.passive="menuScrolled()"
     x-on:resize.window.passive="menuScrolled()"
@@ -73,7 +79,7 @@
             {{-- the filters inline (filtersLayout toolbar) --}}
             @if ($hasFilters && $filtersLayout === 'toolbar')
                 <div class="ps-kanban-filters-inline">
-                    @include('packstub-kanban::filters')
+                    {{ $this->getSchema('kanbanFiltersForm') }}
                 </div>
             @endif
 
@@ -89,14 +95,15 @@
                             </x-slot>
                         </x-filament::icon-button>
                     </x-slot>
-                    <div class="ps-kanban-filters-panel">
-                        <div class="ps-kanban-filters-header">
-                            <h4 class="ps-kanban-filters-heading" x-text="t.filters"></h4>
+                    {{-- a table's filters panel: its heading, the reset link, Filament's fields (kanbanFiltersForm) --}}
+                    <div class="fi-ta-filters ps-kanban-filters-panel">
+                        <div class="fi-ta-filters-header">
+                            <h4 class="fi-ta-filters-heading" x-text="t.filters"></h4>
                             <x-filament::link tag="button" color="danger" size="sm" class="ps-kanban-filters-reset" x-show="activeFilterCount()" x-on:click="resetFilters()">
                                 <span x-text="t.reset_filters"></span>
                             </x-filament::link>
                         </div>
-                        @include('packstub-kanban::filters', ['stacked' => true])
+                        {{ $this->getSchema('kanbanFiltersForm') }}
                     </div>
                 </x-filament::dropdown>
             @endif
@@ -138,14 +145,14 @@
 
     {{-- the filters on a row of their own (filtersLayout above) --}}
     @if ($hasFilters && $filtersLayout === 'above')
-        <div class="ps-kanban-filters-above">
-            <div class="ps-kanban-filters-header">
-                <h4 class="ps-kanban-filters-heading" x-text="t.filters"></h4>
+        <div class="fi-ta-filters ps-kanban-filters-above">
+            <div class="fi-ta-filters-header">
+                <h4 class="fi-ta-filters-heading" x-text="t.filters"></h4>
                 <x-filament::link tag="button" color="danger" size="sm" class="ps-kanban-filters-reset" x-show="activeFilterCount()" x-on:click="resetFilters()">
                     <span x-text="t.reset_filters"></span>
                 </x-filament::link>
             </div>
-            @include('packstub-kanban::filters', ['stacked' => true])
+            {{ $this->getSchema('kanbanFiltersForm') }}
         </div>
     @endif
 

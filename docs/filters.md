@@ -1,6 +1,6 @@
 # Filters
 
-A `Filter` narrows the board's query from the toolbar. The fields are Filament's own (its select, searchable or not, its date picker, its checkbox), and the same `Filter` class with the same methods is in [Filament Gantt](https://packstub.dev/docs/filament-gantt) and [Filament Spreadsheet](https://packstub.dev/docs/filament-spreadsheet), so a filter written for one works in the others.
+A `Filter` narrows the board's query from the toolbar. The fields are Filament's own form components (its `Select`, searchable or not, its `DatePicker`, its `Toggle`), rendered through a schema on the component, and the same `Filter` class with the same methods is in [Filament Gantt](https://packstub.dev/docs/filament-gantt) and [Filament Spreadsheet](https://packstub.dev/docs/filament-spreadsheet), so a filter written for one works in the others.
 
 ```php
 use Packstub\Kanban\Filter;
@@ -41,7 +41,7 @@ Filter::select('tags')->label('Tags')->multiple()->options(Tag::pluck('name', 'i
 
 ### Searchable
 
-`searchable()` lets the user type to find an option, for a long list (every user, every customer). With `preload()` (the default) the options are sent with the board and the search runs on the server over their labels, or through `getSearchResultsUsing()`; `preload(false)` sends nothing until the user types. `getOptionLabelUsing()` names a value that is not among the listed options (one restored from the URL), `optionsLimit()` caps a list or a search (50 by default). It also caps the values a searchable `multiple()` filter accepts in one request and the labels looked up for them: a searchable select takes any key, so the list is bounded where a listed one is bounded by its options. A search term is read up to 200 characters.
+`searchable()` lets the user type to find an option, for a long list (every user, every customer). With `preload()` (the default) the options are sent with the board and the search runs on the server over their labels, or through `getSearchResultsUsing()`; `preload(false)` sends nothing until the user types. `getOptionLabelUsing()` names a value that is not among the listed options (one restored from the URL), `optionsLimit()` caps a list or a search (50 by default). The select is Filament's own `Select` form component, so it looks and behaves exactly like one in a form; the search goes through the component's schema, nothing on the page re-renders. It also caps the values a searchable `multiple()` filter accepts in one request and the labels looked up for them: a searchable select takes any key, so the list is bounded where a listed one is bounded by its options. A search term is read up to 200 characters.
 
 ```php
 Filter::select('customer_id')->label('Customer')->searchable()->preload(false)
@@ -51,7 +51,7 @@ Filter::select('customer_id')->label('Customer')->searchable()->preload(false)
 
 ## Boolean
 
-`Filter::boolean('is_hot')` is a Yes / No select. By default it narrows `<name>` to true or false; a `query()` closure gets a bool.
+`Filter::boolean('is_hot')` is a Yes / No select (Filament's native select). By default it narrows `<name>` to true or false; a `query()` closure gets a bool.
 
 ```php
 Filter::boolean('is_hot')->label('Hot deal'),
@@ -61,7 +61,7 @@ Filter::boolean('assigned')->query(fn (Builder $query, bool $on) => $on ? $query
 
 ## Toggle
 
-`Filter::toggle('mine')` is one checkbox with the filter's label and no options: "Overdue", "Assigned to me". There is no default query, so `query()` is required (checked on the first render, not when someone clicks); it gets `true` when the toggle is on and is not called at all when it is off.
+`Filter::toggle('mine')` is one toggle switch with the filter's label and no options: "Overdue", "Assigned to me". There is no default query, so `query()` is required (checked on the first render, not when someone clicks); it gets `true` when the toggle is on and is not called at all when it is off.
 
 ```php
 Filter::toggle('mine')->label('Assigned to me')
@@ -106,7 +106,7 @@ The keys are the same for every board, so one URL-persisted board per page: with
 | --- | --- | --- |
 | `select(string $name)`, `make()` | | One option; the attribute the default query narrows, and the key in the URL. |
 | `boolean(string $name)` | | A Yes / No select; the query gets a bool. |
-| `toggle(string $name)` | | One checkbox; `query()` is required and gets `true`. |
+| `toggle(string $name)` | | One toggle switch; `query()` is required and gets `true`. |
 | `dateRange(string $name)` | | From / Until pickers; the query gets `['from' => ?string, 'until' => ?string]`. |
 | `label(string\|Closure\|null)` | from the name | `owner_id` reads "Owner", `due_at` "Due". |
 | `options(array\|Closure)` | `[]` | `[value => label]`; the only values a plain select accepts. |

@@ -20,10 +20,19 @@ composer lint               # Pint
   actions wired into Filament's action system: record through the board's query, hidden/after/mutate chained onto
   the app's own), `src/Pages/Kanban{,Resource}Page.php`, `src/Events/CardMoved.php`.
 - `resources/views/board.blade.php` (a table-style container on Filament's own components, `ps-kanban-*` hooks),
-  `filters.blade.php` + `partials/{select,date-picker}.blade.php` (the filter fields, shared with Gantt and Spreadsheet),
   `resources/dist/kanban.{js,css}` — hand-written, no build step; `kanban.css` starts with the shell shared by the three
   plugins (`--ps-kanban-*` variables). After editing them in a consuming app, run `php artisan filament:assets` there
   (assets are copied, not linked).
+- The filters are Filament's own form components (`Select`, `Toggle`, `DatePicker`, a `Fieldset` for a date range), built
+  by `Filter::toFormComponent()` and rendered through one schema on the component (`kanbanFiltersForm` → `$kanbanFilters`,
+  filled on mount by `mountInteractsWithKanban()`, which also puts the URL's state in the fields' shape; so the component
+  needs `HasSchemas` / `InteractsWithSchemas`, the pages have it). No copied Filament markup anywhere: a searchable
+  select's search goes through Filament's own `callSchemaComponentMethod`. The state stays the browser's: each field
+  dispatches its change with `afterStateUpdatedJs` (`ps-kanban-filter` `{name, value, edge?}`) to `setFilter()`, and the
+  browser writes its state back into the fields without a request (`syncFields()`: `$wire.$set('kanbanFilters', …, false)`),
+  so a restored URL and Reset show in the fields; the handlers ignore an echo equal to what they hold. The funnel dropdown
+  is `:menu="false"` (a menu would take the keys typed in a search). The dropdown panel and the "above" row wear a
+  table's `fi-ta-filters` / `fi-ta-filters-header` / `fi-ta-filters-heading` beside the `ps-kanban-filters-*` hooks.
 - `tests/Fixtures/TaskBoard.php` — a plain Livewire component (with Filament actions) holding a board, used by the
   Livewire and action tests.
 - `docs/` — the packstub.dev pages (synced by `docs-sync.yml`); `docs/images/` is taken by

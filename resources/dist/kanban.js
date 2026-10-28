@@ -123,6 +123,8 @@ export default function packstubKanban(config) {
             // Drawn again on a later request (the server sends no state then), or first drawn
             // on one (lazy, deferred: unfiltered): load it, as the URL says.
             const fromUrl = ! config.initial && config.url && this.readUrl()
+            // Filament's fields (the filters) show what the browser holds from the start.
+            this.syncFields()
             if (! this.drawn || fromUrl) {
                 this.refresh()
             }
@@ -991,6 +993,43 @@ export default function packstubKanban(config) {
             return this.filters.filter((f) => this.isActive(f)).length
         },
 
+        /**
+         * A filter's field changed (its `ps-kanban-filter` event): a select's value or
+         * list, a toggle's boolean, or one edge of a date range. The fields echo what
+         * syncFields() sets, so a value equal to the active one is nothing.
+         */
+        setFilter(name, value, edge = undefined) {
+            const filter = this.filters.find((f) => f.name === name)
+            if (! filter) return
+            if (filter.type === 'dateRange') return this.pickFilter(name, edge, value)
+            if (filter.type === 'toggle') {
+                const on = value === true
+                if ((this.active[name] === true) === on) return
+                this.active[name] = on
+                return this.queueRefresh()
+            }
+            this.pickSelect(name, value)
+        },
+
+        /** The active filters in the shape the fields hold (null for "all"), set on the component without a request. */
+        fieldState() {
+            const out = {}
+            for (const f of this.filters) {
+                const v = this.active[f.name]
+                if (f.type === 'dateRange') out[f.name] = { from: v?.from || null, until: v?.until || null }
+                else if (f.type === 'toggle') out[f.name] = v === true
+                else if (f.multiple) out[f.name] = Array.isArray(v) ? v : []
+                else out[f.name] = v === '' || v === null || v === undefined ? null : v
+            }
+            return out
+        },
+
+        /** The fields follow the browser's state (a restored URL, Reset, a pick made elsewhere); no request is sent. */
+        syncFields() {
+            if (! this.filters.length) return
+            try { this.$wire.$set('kanbanFilters', this.fieldState(), false) } catch (e) {}
+        },
+
         /** An option chosen in a select filter (null or '' is "all"; a list for a multiple one). A few quick picks are one request. */
         pickSelect(name, value) {
             const filter = this.filters.find((f) => f.name === name)
@@ -1003,8 +1042,9 @@ export default function packstubKanban(config) {
             this.queueRefresh()
         },
 
-        /** A day picked for one end of a date-range filter: the day as `Y-m-d` (from the picker's `Y-m-d H:i:s`), or null when cleared. */
+        /** A day picked for one end of a date-range filter: the day as `Y-m-d` (from the picker's `Y-m-d`), or null when cleared. */
         pickFilter(name, edge, value) {
+            if (edge !== 'from' && edge !== 'until') return
             const day = isoDay(value)
             const current = this.active[name] || { from: null, until: null }
             if ((current[edge] ?? null) === day) return
@@ -1014,19 +1054,22 @@ export default function packstubKanban(config) {
 
         toggleFilter(filter) {
             this.active[filter.name] = ! this.active[filter.name]
+            this.syncFields()
             this.queueRefresh()
         },
 
         clearFilter(filter) {
             this.active[filter.name] = blankFor(filter)
+            this.syncFields()
             this.queueRefresh()
         },
 
-        /** Every filter back to "nothing chosen", one request. */
+        /** Every filter back to "nothing chosen" (the fields too), one request. */
         resetFilters() {
             for (const filter of this.filters) {
                 this.active[filter.name] = blankFor(filter)
             }
+            this.syncFields()
             this.refresh()
         },
 

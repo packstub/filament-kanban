@@ -1,6 +1,6 @@
 # Styling
 
-The board sits on the page the way a Filament table does: a container with a rounded border and a shadow, a toolbar on top (the focus-mode toggle at the start; the search, the filters, the density toggle and the columns manager at the end), the selection strip under it, then the columns on a soft surface. Every control in the toolbar and every menu is one of Filament's own components (button, icon button, input, select, date picker, checkbox, badge, dropdown, tabs), so a panel theme restyles them with the rest of the panel.
+The board sits on the page the way a Filament table does: a container with a rounded border and a shadow, a toolbar on top (the focus-mode toggle at the start; the search, the filters, the density toggle and the columns manager at the end), the selection strip under it, then the columns on a soft surface. Every control in the toolbar and every menu is one of Filament's own components (button, icon button, input, select, date picker, toggle, badge, dropdown, tabs), so a panel theme restyles them with the rest of the panel.
 
 The stylesheet is plain CSS on Filament's colour variables (`--gray-*`, `--primary-*`, `--danger-*`) and follows the panel's theme and dark mode without compiling anything. Restyle it with the `--ps-kanban-*` variables on `.ps-kanban` from your theme, prefixed so they win over the plugin's stylesheet:
 

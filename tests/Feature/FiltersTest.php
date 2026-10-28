@@ -12,7 +12,7 @@ use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
 /*
  * The Filter class shared with Gantt and Spreadsheet: every type, what the URL gives, what the
- * browser gets; the renderless calls behind Filament's select; where the view puts the filters.
+ * browser gets; the fields as Filament's own form components; where the view puts the filters.
  */
 
 it('narrows with a plain select, one of its options and nothing else', function () {
@@ -165,38 +165,66 @@ it('describes itself to the browser', function () {
         ->and(Filter::dateRange('due_at')->label('Due date')->toArray())->toMatchArray(['type' => 'dateRange', 'label' => 'Due date', 'options' => []]);
 });
 
-it('answers the options, a search and the labels for the browser\'s select', function () {
-    $acme = project('Acme');
-    $globex = project('Globex');
+/* ------------------------------------------------------------------ the fields: Filament's own components */
 
-    Livewire::test(TaskBoard::class)
-        ->call('kanbanFilterOptions', 'project_id')
-        ->assertReturned([['value' => (string) $acme->id, 'label' => 'Acme'], ['value' => (string) $globex->id, 'label' => 'Globex']])
-        ->call('kanbanFilterOptions', 'project_id', 'glo')
-        ->assertReturned([['value' => (string) $globex->id, 'label' => 'Globex']])
-        ->call('kanbanFilterOptions', 'urgent') // a toggle has no options
-        ->assertReturned([])
-        ->call('kanbanFilterOptions', 'nope')
-        ->assertReturned([])
-        ->call('kanbanFilterOptions', ['x'])
-        ->assertReturned([])
-        ->call('kanbanFilterOptions', 'project_id', ['x'])
-        ->assertReturned([])
-        ->call('kanbanFilterOptionLabel', 'project_id', (string) $acme->id)
-        ->assertReturned('Acme')
-        ->call('kanbanFilterOptionLabel', 'project_id', '999')
-        ->assertReturned(null)
-        ->call('kanbanFilterOptionLabel', 'project_id', '')
-        ->assertReturned(null)
-        ->call('kanbanFilterOptionLabel', 'urgent', '1')
-        ->assertReturned(null)
-        // A list, as Filament's select reads it (`option.value`, `option.label`), in the order asked.
-        ->call('kanbanFilterOptionLabels', 'project_id', [(string) $globex->id, '999', (string) $acme->id, '', ['x']])
-        ->assertReturned([['value' => (string) $globex->id, 'label' => 'Globex'], ['value' => (string) $acme->id, 'label' => 'Acme']])
-        ->call('kanbanFilterOptionLabels', 'project_id', 'not a list')
-        ->assertReturned([])
-        ->call('kanbanFilterOptionLabels', 'nope', ['1'])
-        ->assertReturned([]);
+it('renders every filter as Filament\'s own field, each dispatching its change to the browser', function () {
+    project('Acme');
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->filters([
+                Filter::select('project_id')->options(fn () => Project::query()->pluck('name', 'id')->all()),
+                Filter::select('owner')->multiple()->searchable()->options(['a' => 'A']),
+                Filter::boolean('done')->query(fn ($q, $v) => $q),
+                Filter::toggle('mine')->query(fn ($q) => $q),
+                Filter::dateRange('due_at')->label('Due date'),
+            ]);
+        }
+    };
+
+    $html = Livewire::test($component::class)->html();
+
+    // a native select for one option, Filament's select for several, a toggle, two date pickers in a fieldset,
+    // each watching its state path and dispatching the plugin's event with the filter's name (and the edge of a range)
+    expect($html)->toContain('fi-fo-select-native')
+        ->and($html)->toContain('fi-fo-select-wrp')
+        ->and($html)->toContain('fi-fo-toggle')
+        ->and(substr_count($html, 'fi-fo-date-time-picker-trigger'))->toBeGreaterThanOrEqual(2)
+        ->and($html)->toContain('Due date')
+        ->and($html)->toContain('firstDayOfWeek: 1')
+        ->and($html)->toContain('$wire.watch(\'kanbanFilters.project_id\'')
+        ->and($html)->toContain('$wire.watch(\'kanbanFilters.mine\'')
+        ->and($html)->toContain('$wire.watch(\'kanbanFilters.due_at.from\'')
+        ->and($html)->toContain('$wire.watch(\'kanbanFilters.due_at.until\'')
+        ->and($html)->toContain('ps-kanban-filter\\u0027, { name: \\u0027project_id\\u0027')
+        ->and($html)->toContain('ps-kanban-filter\\u0027, { name: \\u0027due_at\\u0027, edge: \\u0027until\\u0027')
+        ->and($html)->toContain('x-on:ps-kanban-filter="setFilter(');
+});
+
+it('answers a searchable select\'s search and labels through Filament\'s own select, by its schema key', function () {
+    $acme = project('Acme');
+    $beta = project('Beta');
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->filters([Filter::select('project_id')->multiple()->searchable()->options(fn () => Project::query()->orderBy('name')->pluck('name', 'id')->all())]);
+        }
+    };
+
+    Livewire::test($component::class)
+        ->call('callSchemaComponentMethod', 'kanbanFiltersForm.project_id', 'getSearchResultsForJs', ['search' => 'bet'])
+        ->assertReturned(fn ($options) => collect($options)->pluck('label')->all() === ['Beta'] && (string) collect($options)->first()['value'] === (string) $beta->id)
+        ->call('callSchemaComponentMethod', 'kanbanFiltersForm.project_id', 'getOptionsForJs')
+        ->assertReturned(fn ($options) => collect($options)->pluck('label')->all() === ['Acme', 'Beta'])
+        ->set('kanbanFilters.project_id', [(string) $beta->id, '999', (string) $acme->id])
+        ->call('callSchemaComponentMethod', 'kanbanFiltersForm.project_id', 'getOptionLabelsForJs')
+        ->assertReturned(fn ($labels) => collect($labels)->pluck('label', 'value')->all() == [$beta->id => 'Beta', $acme->id => 'Acme'])
+        ->call('callSchemaComponentMethod', 'kanbanFiltersForm.nope', 'getOptionsForJs')
+        ->assertReturned(null);
 });
 
 it('draws a shared link with a date range and a boolean from the URL', function () {
@@ -221,7 +249,18 @@ it('draws a shared link with a date range and a boolean from the URL', function 
         ->assertDontSee('Jan')
         ->assertDontSee('Calm')
         ->assertSeeHtml('\u0022due_at\u0022:{\u0022from\u0022:\u00222026-02-01\u0022,\u0022until\u0022:null}')
-        ->assertSeeHtml('\u0022urgent\u0022:\u00221\u0022');
+        ->assertSeeHtml('\u0022urgent\u0022:\u00221\u0022')
+        // the fields hold the restored state in their own shape from the first render, before the browser syncs them
+        ->assertSet('kanbanFilters', ['due_at' => ['from' => '2026-02-01', 'until' => null], 'urgent' => '1']);
+
+    // a multiple select as a list, a toggle as a bool, a select with no value as null; a value that is not an option as none
+    Livewire::withQueryParams(['filters' => ['project_id' => ['1', 'x'], 'urgent' => '1']])
+        ->test(TaskBoard::class)
+        ->assertSet('kanbanFilters', ['project_id' => [], 'urgent' => true]);
+
+    Livewire::withQueryParams(['filters' => ['due_at' => 'nope']])
+        ->test($component::class)
+        ->assertSet('kanbanFilters', ['due_at' => ['from' => null, 'until' => null], 'urgent' => null]);
 });
 
 it('places the filters where the definition or the config says, and refuses a layout that is not one', function () {
@@ -245,7 +284,7 @@ it('renders the funnel only with filters, the fields inline in the toolbar, or a
     foreach ([
         'class="ps-kanban"', 'ps-kanban-toolbar', 'ps-kanban-toolbar-start', 'ps-kanban-toolbar-end', 'ps-kanban-sidebar-btn', 'ps-kanban-search',
         'fi-input-wrp', 'fi-input-has-inline-prefix', 'ps-kanban-filters-dropdown', 'ps-kanban-filters-btn', 'ps-kanban-filters-panel', 'ps-kanban-filters-reset',
-        'ps-kanban-filter', 'fi-select-input', 'ps-kanban-toggle', 'fi-checkbox-input', 'ps-kanban-density-btn', 'ps-kanban-columns-dropdown', 'ps-kanban-columns-btn',
+        'fi-ta-filters', 'fi-ta-filters-header', 'fi-ta-filters-heading', 'fi-sc', 'fi-fo-select', 'fi-fo-toggle', 'ps-kanban-density-btn', 'ps-kanban-columns-dropdown', 'ps-kanban-columns-btn',
         'ps-kanban-columns-item', 'ps-kanban-indicator', 'ps-kanban-bulk-move', 'ps-kanban-bulk-action', 'ps-kanban-selection-clear', 'ps-kanban-tabs', 'fi-tabs-item',
         'ps-kanban-board', 'ps-kanban-card-popover', 'fi-dropdown-panel', 'fi-dropdown-list-item', 'fi-dropdown-header', 'fi-btn', 'fi-icon-btn', 'fi-badge', 'fi-dropdown',
     ] as $hook) {
@@ -286,7 +325,18 @@ it('renders the funnel only with filters, the fields inline in the toolbar, or a
             return parent::kanban($board)->filters([Filter::dateRange('due_at')]);
         }
     };
-    expect(Livewire::test($dated::class)->html())->toContain('fi-fo-date-time-picker')->toContain('ps-kanban-range')->toContain('firstDayOfWeek: 1');
+    expect(Livewire::test($dated::class)->html())->toContain('fi-fo-date-time-picker')->toContain('fi-fieldset')->toContain('firstDayOfWeek: 1');
+
+    // the inline layout puts the label as the field's prefix, a date range's pickers in a group
+    config()->set('packstub-kanban.first_day_of_week', 7);
+    $inlineDated = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->filtersLayout(FiltersLayout::Toolbar)->filters([Filter::dateRange('due_at'), Filter::select('project_id')->options(['1' => 'One'])]);
+        }
+    };
+    expect(Livewire::test($inlineDated::class)->html())->toContain('firstDayOfWeek: 7')->not->toContain('fi-fieldset')->toContain('fi-input-wrp-prefix');
 });
 
 it('caps the values a searchable multiple filter, a label lookup and a search take', function () {
@@ -323,33 +373,12 @@ it('caps the values a searchable multiple filter, a label lookup and a search ta
     $component::$filter = $filter;
 
     Livewire::test($component::class)
-        ->call('kanbanFilterOptionLabels', 'owner', array_merge(array_map('strval', range(1, 40)), ['1', '1']))
-        ->assertReturned([['value' => '1', 'label' => 'L1'], ['value' => '2', 'label' => 'L2'], ['value' => '3', 'label' => 'L3'], ['value' => '4', 'label' => 'L4'], ['value' => '5', 'label' => 'L5']])
-        ->call('kanbanFilterOptions', 'owner', str_repeat('q', 500))
-        ->assertReturned([['value' => 's', 'label' => '200']]);
+        ->set('kanbanFilters.owner', array_merge(array_map('strval', range(1, 40)), ['1', '1']))
+        ->call('callSchemaComponentMethod', 'kanbanFiltersForm.owner', 'getOptionLabelsForJs')
+        ->assertReturned(fn ($labels) => collect($labels)->pluck('label')->all() === ['L1', 'L2', 'L3', 'L4', 'L5'])
+        ->call('callSchemaComponentMethod', 'kanbanFiltersForm.owner', 'getSearchResultsForJs', ['search' => str_repeat('q', 500)])
+        ->assertReturned(fn ($options) => array_map('strval', collect($options)->pluck('label')->all()) === ['200']);
 
-    expect($lookups)->toBe(5);
-});
-
-it('answers Filament 4.16+ option requests through the kanbanFilters schema by key', function () {
-    $acme = project('Acme');
-    $beta = project('Beta');
-
-    $component = new class extends TaskBoard
-    {
-        public function kanban(Board $board): Board
-        {
-            return parent::kanban($board)->filters([Filter::select('project_id')->searchable()->options(fn () => Project::query()->orderBy('name')->pluck('name', 'id')->all())]);
-        }
-    };
-
-    Livewire::test($component::class)
-        ->call('callSchemaComponentMethod', 'kanbanFilters.project_id', 'getOptionsForJs')
-        ->assertReturned([['value' => (string) $acme->id, 'label' => 'Acme'], ['value' => (string) $beta->id, 'label' => 'Beta']])
-        ->call('callSchemaComponentMethod', 'kanbanFilters.project_id', 'getSearchResultsForJs', ['search' => 'bet'])
-        ->assertReturned([['value' => (string) $beta->id, 'label' => 'Beta']])
-        ->call('callSchemaComponentMethod', 'kanbanFilters.project_id', 'getOptionLabelsForJs')
-        ->assertReturned([])
-        ->call('callSchemaComponentMethod', 'kanbanFilters.nope', 'getOptionsForJs')
-        ->assertReturned(null);
+    // five labels looked up per call (Filament reads the labels twice while answering)
+    expect($lookups)->toBeLessThanOrEqual(10);
 });
