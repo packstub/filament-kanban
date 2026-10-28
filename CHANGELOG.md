@@ -2,7 +2,7 @@
 
 All notable changes to `packstub/filament-kanban` are documented in this file.
 
-## Unreleased
+## 1.0.0-beta.1 - 2026-10-28
 
 - Fixed: the card that follows the pointer during a drag no longer shows a list bullet in its corner (the clone lives outside the column's list).
 - The filters are Filament's own form components (`Select`, native for one option and Filament's for several or a search, `Toggle`, `DatePicker`, two in a fieldset for a date range), built by `Filter::toFormComponent()` and rendered through the component's `kanbanFiltersForm` schema (state in `$kanbanFilters`, filled on mount), so they look and behave exactly like a form's and follow every Filament version without copied markup; the component needs `HasSchemas` / `InteractsWithSchemas` (the pages have it). The browser keeps the state as before: a field dispatches its change (`afterStateUpdatedJs`, the `ps-kanban-filter` event to `setFilter()`), the board applies it and writes its state back into the fields without a request (`syncFields()`), so a filter change is still no Livewire re-render, the URL keeps its shape, and a value restored from the URL and Reset filters show in the fields. The renderless `kanbanFilterOptions`, `kanbanFilterOptionLabel` and `kanbanFilterOptionLabels` are gone (Filament's select asks its own component through `callSchemaComponentMethod`); the funnel dropdown is a panel of fields (`:menu="false"`).
