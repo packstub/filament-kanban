@@ -580,8 +580,37 @@ export default function packstubKanban(config) {
             const key = 'card:' + card.id
             this.menu = this.menu === key ? null : key
             if (this.menu) {
+                this.placeMenu(card.id)
                 this.$nextTick(() => this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(card.id)}"] .ps-kanban-menu-item`)?.focus())
             }
+        },
+
+        // The card's menu floats over the board, fixed to the viewport (the column's scroll
+        // never clips it), under the card's menu button and flush with its end, as a
+        // dropdown panel; above the button when the room below is short. Set on the element
+        // itself (a `:style` binding would fight x-show over the style attribute). A scroll
+        // anywhere on the board closes it rather than leaving it adrift.
+        placeMenu(id) {
+            const card = this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(id)}"]`)
+            const panel = card?.querySelector(':scope > .ps-kanban-card-popover')
+            const anchor = card?.querySelector(':scope > .ps-kanban-card-menu') ?? card
+            if (! panel || ! anchor) return
+            const rect = anchor.getBoundingClientRect()
+            const rtl = getComputedStyle(this.$root).direction === 'rtl'
+            const below = window.innerHeight - rect.bottom
+            const under = below > 240 || rect.top < below
+            Object.assign(panel.style, {
+                position: 'fixed',
+                top: under ? rect.bottom + 4 + 'px' : 'auto',
+                bottom: under ? 'auto' : window.innerHeight - rect.top + 4 + 'px',
+                left: rtl ? rect.left + 'px' : 'auto',
+                right: rtl ? 'auto' : window.innerWidth - rect.right + 'px',
+            })
+        },
+
+        // A scroll inside the board (a column, the board sideways) or of the page moves the card away from its menu.
+        menuScrolled() {
+            if (this.menu?.startsWith('card:')) this.menu = null
         },
 
         // Focus the card again once Alpine has drawn it; when its column is not on screen
@@ -1305,12 +1334,40 @@ export default function packstubKanban(config) {
             return this.columns.find((c) => c.name === name)
         },
 
+        /**
+         * A colour as CSS, or null. The same shapes the server keeps (Column::safeColor()):
+         * a name, #hex, a colour function of plain values, var(--name). A name the board
+         * does not know is the panel's own colour of that name (`brand` → --brand-500),
+         * or the CSS colour of that name when the panel has none. Bound through Alpine's
+         * style object, never concatenated, so a value from user data cannot add declarations.
+         */
         tone(color) {
-            return TONES[color] ?? color ?? TONES.gray
+            const value = String(color ?? '').trim()
+            if (! value) return null
+            if (TONES[value]) return TONES[value]
+            if (/^[a-z][a-z0-9-]*$/i.test(value)) return `var(--${value}-500, ${value})`
+            if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) return value
+            if (/^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([a-z0-9.,%\/+\- ]*\)$/i.test(value)) return value
+            if (/^var\(--[a-z0-9_-]+\)$/i.test(value)) return value
+
+            return null
         },
 
         dot(color) {
-            return 'background:' + this.tone(color)
+            return { background: this.tone(color) ?? TONES.gray }
+        },
+
+        /** A card's href: a path, or http(s), mailto, tel; never javascript:, data:, nor a protocol-relative //host (the server dropped these already). */
+        safeUrl(url) {
+            const value = String(url ?? '').trim()
+            if (! value) return null
+            // As a browser reads it: control characters and spaces removed.
+            const bare = value.replace(/[\u0000- ]+/g, '')
+            // Two leading slashes of either kind name a host: an open redirect, not a path.
+            if (/^[\/\\]{2}/.test(bare)) return null
+            const m = /^([a-z][a-z0-9+.-]*):/i.exec(bare)
+
+            return ! m || ['http', 'https', 'mailto', 'tel'].includes(m[1].toLowerCase()) ? value : null
         },
 
         initials(name) {

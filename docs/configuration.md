@@ -144,6 +144,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `swimlanes(?string, array\|Closure\|class-string\|null)` | off | Rows by an attribute: `Lane`s, an enum, or derived from the data. |
 | `createAction(?Action)` | off | A "+" on each droppable column. |
 | `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from, ?string $lane)`. |
+| `authorizeMoves(bool\|Closure)` | the policy's `update`; a resource page's `canEdit()` | Who may move a card; see [Who may move](moves.md#who-may-move). |
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
 | `undo(bool\|int)` | `5` | "Undo" on the notification after a move, for this many seconds; `false` for none. |

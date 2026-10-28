@@ -19,6 +19,7 @@ use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Packstub\Kanban\KanbanServiceProvider;
 use Packstub\Kanban\Tests\Fixtures\AdminPanelProvider;
+use Packstub\Kanban\Tests\Fixtures\User;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
 
 abstract class TestCase extends Orchestra
@@ -26,6 +27,15 @@ abstract class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        Schema::create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
 
         Schema::create('projects', function (Blueprint $table): void {
             $table->id();
@@ -70,6 +80,7 @@ abstract class TestCase extends Orchestra
     {
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
+        $app['config']->set('auth.providers.users.model', User::class);
         $app['config']->set('app.key', 'base64:2fl+Ktv6fZ7c7ZQfF1Zt6Q0Wd9jz5bJ6rKq8nX0m3Yk=');
     }
 }

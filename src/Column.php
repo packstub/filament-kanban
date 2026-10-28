@@ -275,7 +275,7 @@ class Column
 
     public function getColor(): ?string
     {
-        return $this->evaluate($this->color);
+        return static::safeColor($this->evaluate($this->color));
     }
 
     public function isVisible(): bool
@@ -335,10 +335,35 @@ class Column
     public static function colorFromFilament(mixed $color): ?string
     {
         if (is_array($color)) {
-            return $color[500] ?? (array_values($color)[0] ?? null);
+            $color = $color[500] ?? (array_values($color)[0] ?? null);
         }
 
-        return $color;
+        return is_string($color) || is_int($color) ? (string) $color : null;
+    }
+
+    /**
+     * The colour if it is one, otherwise null: a name (`sky`, `primary`, a panel's
+     * own `brand`), `#hex`, a colour function (`rgb()`, `hsl()`, `hwb()`, `lab()`,
+     * `lch()`, `oklab()`, `oklch()`, `color()`, with or without an `a`) holding
+     * plain values, or `var(--name)`. A `;`, a brace, `url(…)` or a nested
+     * function never gets through: a colour taken from user data cannot add its own
+     * declarations to a card's or a column's style. The browser checks the same shapes
+     * again (`tone()`).
+     */
+    public static function safeColor(mixed $color): ?string
+    {
+        if (! is_string($color) && ! is_int($color)) {
+            return null;
+        }
+
+        $color = trim((string) $color);
+
+        $safe = preg_match('/^[a-z][a-z0-9-]*$/i', $color) === 1
+            || preg_match('/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $color) === 1
+            || preg_match('/^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([a-z0-9.,%\/+\- ]*\)$/i', $color) === 1
+            || preg_match('/^var\(--[a-z0-9_-]+\)$/i', $color) === 1;
+
+        return $safe ? $color : null;
     }
 
     protected function evaluate(mixed $value): mixed

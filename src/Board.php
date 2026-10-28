@@ -6,6 +6,7 @@ use BackedEnum;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
+use Filament\Facades\Filament;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Traits\Conditionable;
 use Packstub\Kanban\Enums\FiltersLayout;
 use Packstub\Kanban\Events\BoardChanged;
@@ -60,6 +62,11 @@ class Board
     protected int $perColumn = 50;
 
     protected ?Closure $moveUsing = null;
+
+    protected bool|Closure|null $authorizeMoves = null;
+
+    /** @var array<string, bool> authorizeMoves() answers, by record key */
+    protected array $authorizedMoves = [];
 
     protected bool $focusMode = true;
 
@@ -240,6 +247,22 @@ class Board
     public function moveUsing(Closure $callback): static
     {
         $this->moveUsing = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Who may move a card (drag, reorder, "Move to", a bulk move): a bool or
+     * `fn (Model $record): bool`. Default: the model policy's `update` ability, when
+     * the model has a policy with one; on a KanbanResourcePage, the resource's
+     * canEdit(). A record refused here is drawn locked, and its moves are refused on
+     * the server whatever the browser sends. The column rules and Card::locked() still
+     * apply on top: they say what may change, this says who may change it.
+     */
+    public function authorizeMoves(bool|Closure|null $condition = true): static
+    {
+        $this->authorizeMoves = $condition;
+        $this->authorizedMoves = [];
 
         return $this;
     }
@@ -661,6 +684,9 @@ class Board
             return;
         }
 
+        // The token is echoed to every subscriber: only the shape the browser generates gets through.
+        $origin = $origin !== null && preg_match('/^[a-z0-9]{1,32}$/i', $origin) === 1 ? $origin : null;
+
         // The channel is the app's closure: resolved inside rescue() too, so no caller needs its own.
         rescue(function () use ($id, $from, $to, $origin) {
             $event = $this->broadcastNow ? BoardChangedNow::class : BoardChanged::class;
@@ -671,6 +697,43 @@ class Board
                 report: true,
             ));
         }, report: true);
+    }
+
+    /** Whether authorizeMoves() was set (a page fills in its default otherwise). */
+    public function hasMoveAuthorization(): bool
+    {
+        return $this->authorizeMoves !== null;
+    }
+
+    /** Whether the user may move this record (see authorizeMoves()). */
+    public function canMoveRecord(Model $record): bool
+    {
+        $key = (string) $record->getKey();
+
+        if (array_key_exists($key, $this->authorizedMoves)) {
+            return $this->authorizedMoves[$key];
+        }
+
+        if ($this->authorizeMoves === null) {
+            $policy = Gate::getPolicyFor($record);
+
+            if ($policy === null) {
+                $allowed = true;
+            } elseif (method_exists($policy, 'update')) {
+                $allowed = Gate::allows('update', $record);
+            } elseif (method_exists($policy, 'before')) {
+                // No update() rule, but a before() that may still say no (a suspended
+                // user): the Gate alone would refuse everyone for the missing method.
+                $user = (Filament::getCurrentPanel() ? Filament::auth() : auth())->user();
+                $allowed = $user === null || ($policy->before($user, 'update') ?? true) !== false;
+            } else {
+                $allowed = true;
+            }
+        } else {
+            $allowed = (bool) ($this->authorizeMoves instanceof Closure ? ($this->authorizeMoves)($record) : $this->authorizeMoves);
+        }
+
+        return $record->exists ? $this->authorizedMoves[$key] = $allowed : $allowed;
     }
 
     /** @return class-string<Model> */
@@ -753,6 +816,24 @@ class Board
     private static function cleanIds(array $ids): array
     {
         return array_values(array_unique(array_map('strval', array_filter($ids, fn ($id) => is_scalar($id) && ! blank($id)))));
+    }
+
+    /**
+     * The target column's order a drop sent, cleaned like a selection: scalars only, as
+     * strings. A list longer than ten pages of the column is no order the browser drew
+     * (one page is loaded at a time) and is dropped as a whole: the move still happens,
+     * the column keeps its positions.
+     *
+     * @param  array<mixed>|null  $order
+     * @return list<string>|null
+     */
+    protected function orderIds(?array $order): ?array
+    {
+        if ($order === null || count($order) > $this->perColumn * 10) {
+            return null;
+        }
+
+        return static::cleanIds($order);
     }
 
     /** Whether a new card may be created in this column now: visible, droppable, creatable and not full. */
@@ -959,6 +1040,8 @@ class Board
             'id' => (string) $record->getKey(),
             ...($this->hasLanes() ? ['lane' => $this->laneValue($record)] : []),
             ...$card->toArray(),
+            // A card the user may not move is drawn locked, like Card::locked(): the drag never starts.
+            ...($this->canMoveRecord($record) ? [] : ['draggable' => false]),
         ];
 
         // A badge names its icon; the SVG goes to the browser once per request, not per card.
@@ -1001,6 +1084,11 @@ class Board
         $record = $this->findRecord($id)
             ?? throw new MoveRejected(__('packstub-kanban::kanban.missing'));
 
+        if (! $this->canMoveRecord($record)) {
+            throw new MoveRejected(__('packstub-kanban::kanban.not_allowed'));
+        }
+
+        $order = $this->orderIds($order);
         $from = $this->columnValue($record);
         $source = $this->getColumn($from);
         $target = $this->getColumn($to);

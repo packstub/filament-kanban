@@ -37,6 +37,9 @@
     x-on:keydown.escape.window="menu = null; clearSelection()"
     x-on:packstub-kanban-refresh.window="refresh(true)"
     x-on:packstub-kanban-undo.window="undo($event.detail)"
+    x-on:scroll.capture.passive="menuScrolled()"
+    x-on:scroll.window.passive="menuScrolled()"
+    x-on:resize.window.passive="menuScrolled()"
     class="ps-kanban"
     :class="{ 'ps-kanban-is-dragging': dragging, 'ps-kanban-compact': density === 'compact', 'ps-kanban-narrow': narrow }"
 >
@@ -78,12 +81,12 @@
             @if ($hasFilters && $filtersLayout === 'dropdown')
                 <x-filament::dropdown placement="bottom-end" width="xs" class="ps-kanban-filters-dropdown">
                     <x-slot name="trigger">
-                        <div class="ps-kanban-filters-trigger">
-                            <x-filament::icon-button color="gray" :icon="Heroicon::OutlinedFunnel" :label="__('packstub-kanban::kanban.filters')" class="ps-kanban-filters-btn" />
-                            <div class="fi-icon-btn-badge-ctn" x-show="activeFilterCount()">
-                                <x-filament::badge size="xs" color="primary" class="ps-kanban-filters-count"><span x-text="activeFilterCount()"></span></x-filament::badge>
-                            </div>
-                        </div>
+                        {{-- the count sits on the button's corner, in the icon button's own badge container, as a table's filter trigger --}}
+                        <x-filament::icon-button color="gray" :icon="Heroicon::OutlinedFunnel" :label="__('packstub-kanban::kanban.filters')" class="ps-kanban-filters-btn">
+                            <x-slot name="badge">
+                                <x-filament::badge size="xs" color="primary" class="ps-kanban-filters-count" x-show="activeFilterCount()"><span x-text="activeFilterCount()"></span></x-filament::badge>
+                            </x-slot>
+                        </x-filament::icon-button>
                     </x-slot>
                     <div class="ps-kanban-filters-panel">
                         <div class="ps-kanban-filters-header">
@@ -111,12 +114,11 @@
             {{-- the columns manager: which columns are shown, the hidden count on the button --}}
             <x-filament::dropdown placement="bottom-end" width="xs" class="ps-kanban-columns-dropdown">
                 <x-slot name="trigger">
-                    <div class="ps-kanban-columns-trigger">
-                        <x-filament::icon-button color="gray" :icon="Heroicon::OutlinedViewColumns" :label="__('packstub-kanban::kanban.columns')" class="ps-kanban-columns-btn" />
-                        <div class="fi-icon-btn-badge-ctn" x-show="hidden.length">
-                            <x-filament::badge size="xs" color="primary" class="ps-kanban-columns-count"><span x-text="hidden.length"></span></x-filament::badge>
-                        </div>
-                    </div>
+                    <x-filament::icon-button color="gray" :icon="Heroicon::OutlinedViewColumns" :label="__('packstub-kanban::kanban.columns')" class="ps-kanban-columns-btn">
+                        <x-slot name="badge">
+                            <x-filament::badge size="xs" color="primary" class="ps-kanban-columns-count" x-show="hidden.length"><span x-text="hidden.length"></span></x-filament::badge>
+                        </x-slot>
+                    </x-filament::icon-button>
                 </x-slot>
                 <div class="ps-kanban-columns">
                     <h4 class="ps-kanban-columns-heading" x-text="t.columns"></h4>
@@ -276,13 +278,13 @@
                             :data-id="card.id"
                             x-show="matches(card)"
                             :class="{ 'ps-kanban-card-pending': card._pending, 'ps-kanban-card-flash': card._flash, 'ps-kanban-card-accent': card.accent, 'ps-kanban-card-selected': isSelected(card.id), 'ps-kanban-card-locked': card.draggable === false }"
-                            :style="card.accent ? '--ps-kanban-card-accent:' + tone(card.accent) : ''"
+                            :style="{ '--ps-kanban-card-accent': tone(card.accent) }"
                         >
                             <button type="button" class="ps-kanban-card-check" x-show="hasSelection" x-on:click.stop="toggleSelect(card, column, lane, $event)" :aria-pressed="isSelected(card.id)" :aria-label="t.select_card" :title="t.select_card">
                                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 10.5 3.5 3.5L15 7"/></svg>
                             </button>
                             {{-- Without a url the anchor is still focusable (arrows, Shift+F10); with a click action it is a button, Enter and Space run it (see keys()). --}}
-                            <a class="ps-kanban-card-link" :href="card.url || null" :role="! card.url && clickable(card) ? 'button' : null" :tabindex="card.url ? null : 0" x-on:click="open($event, card, column, lane)" draggable="false">
+                            <a class="ps-kanban-card-link" :href="safeUrl(card.url)" :role="! card.url && clickable(card) ? 'button' : null" :tabindex="card.url ? null : 0" x-on:click="open($event, card, column, lane)" draggable="false">
                                 <span class="ps-kanban-lock" x-show="card.draggable === false" role="img" :title="t.locked" :aria-label="t.locked">
                                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4.75" y="8.75" width="10.5" height="8.5" rx="1.5"/><path d="M7 8.75V6.5a3 3 0 0 1 6 0v2.25"/></svg>
                                 </span>
@@ -294,7 +296,7 @@
                                 <div class="ps-kanban-description" x-show="card.description" x-text="card.description"></div>
                                 <div class="ps-kanban-card-foot" x-show="(card.badges && card.badges.length) || (card.meta && card.meta.length) || (card.avatars && card.avatars.length) || card.due || card.progress">
                                     <template x-for="badge in (card.badges || [])" :key="badge.label">
-                                        <span class="ps-kanban-badge" :style="'--ps-kanban-badge:' + tone(badge.color || 'gray')">
+                                        <span class="ps-kanban-badge" :style="{ '--ps-kanban-badge': tone(badge.color) ?? tone('gray') }">
                                             <template x-if="badge.icon && icons[badge.icon]"><span class="ps-kanban-badge-icon" x-html="icons[badge.icon]"></span></template>
                                             <span x-text="badge.label"></span>
                                         </span>
@@ -328,7 +330,7 @@
                             >
                                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="5" cy="10" r="1.4"/><circle cx="10" cy="10" r="1.4"/><circle cx="15" cy="10" r="1.4"/></svg>
                             </button>
-                            {{-- The card's menu opens in place, inside the card (the column's scroll never clips it), in the dropdown's clothes. --}}
+                            {{-- The card's menu stays in the card's markup (the keyboard handler and click-outside see it there) and floats over the board, fixed where placeMenu() put it, in the dropdown panel's clothes. --}}
                             <div class="ps-kanban-menu ps-kanban-card-popover fi-dropdown-panel" role="menu" x-show="menu === 'card:' + card.id" x-cloak x-on:click.outside="menu = null">
                                 <div class="fi-dropdown-list" x-show="actionsFor(card).length">
                                     <template x-for="action in actionsFor(card)" :key="action.name">

@@ -155,14 +155,15 @@ class Card implements Arrayable
     }
 
     /**
-     * A small coloured tag; color is a Tailwind-ish name or any CSS colour. The icon
-     * (a Heroicon name or enum) is drawn before the label. The card carries its name
-     * only; the board sends each icon's SVG once (see Board::getIcons()).
+     * A small coloured tag; color is a Tailwind-ish name or any CSS colour (only colour
+     * shapes are kept, see Column::safeColor(): the value lands in a style attribute).
+     * The icon (a Heroicon name or enum) is drawn before the label. The card carries its
+     * name only; the board sends each icon's SVG once (see Board::getIcons()).
      */
     public function badge(?string $label, ?string $color = null, bool $condition = true, string|BackedEnum|null $icon = null): static
     {
         if ($condition && filled($label)) {
-            $badge = ['label' => $label, 'color' => $color];
+            $badge = ['label' => $label, 'color' => Column::safeColor($color)];
 
             $name = match (true) {
                 $icon instanceof ScalableIcon => $icon->getIconForSize(IconSize::Medium),
@@ -204,20 +205,48 @@ class Card implements Arrayable
         return $this->draggable;
     }
 
-    /** Clicking the card opens this URL. */
+    /**
+     * Clicking the card opens this URL. Only http(s), mailto, tel and relative URLs are
+     * kept: a `javascript:` or `data:` value (a user-editable link column, say) is
+     * dropped, never followed, and so is a protocol-relative `//host` that would leave
+     * the site.
+     */
     public function url(?string $url): static
     {
-        $this->url = $url;
+        $this->url = static::safeUrl($url);
 
         return $this;
     }
 
-    /** A thin coloured edge on the left: flags a card that needs attention. */
+    /** A thin coloured edge on the left: flags a card that needs attention (colour shapes only, see Column::safeColor()). */
     public function accent(?string $color): static
     {
-        $this->accent = $color;
+        $this->accent = Column::safeColor($color);
 
         return $this;
+    }
+
+    /** A URL safe to navigate to: a path, or http(s), mailto, tel; never javascript:, data:, nor a protocol-relative //host. */
+    public static function safeUrl(?string $url): ?string
+    {
+        $url = trim((string) $url);
+
+        if ($url === '') {
+            return null;
+        }
+
+        // The URL as a browser would read it: control characters and spaces removed.
+        $bare = preg_replace('/[\x00-\x20]+/', '', $url) ?? '';
+
+        // Two leading slashes of either kind name a host (`//evil.test`, `\\evil.test`,
+        // `/\evil.test`): an open redirect, not a path.
+        if (preg_match('/^[\/\\\\]{2}/', $bare)) {
+            return null;
+        }
+
+        $scheme = preg_match('/^([a-z][a-z0-9+.\-]*):/i', $bare, $m) ? strtolower($m[1]) : null;
+
+        return $scheme === null || in_array($scheme, ['http', 'https', 'mailto', 'tel'], true) ? $url : null;
     }
 
     /** Extra text the instant (in-browser) search matches on, besides what the card shows. */

@@ -132,7 +132,7 @@ class Lane
 
     public function getColor(): ?string
     {
-        return Column::colorFromFilament($this->evaluate($this->color));
+        return Column::safeColor(Column::colorFromFilament($this->evaluate($this->color)));
     }
 
     public function isCollapsed(): bool

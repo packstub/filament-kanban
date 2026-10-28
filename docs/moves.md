@@ -4,11 +4,22 @@
 
 1. The card moves in the browser at once, the column counts change, and the card is marked as pending.
 2. The browser asks the server (`kanbanMove`, a renderless Livewire call: nothing is re-rendered).
-3. The server loads the record through the board's `query()` and checks the rules: both columns are visible to this user, the card is not [locked](cards.md#locking-a-card), the source is `draggable`, the target is `droppable`, `accepts` the source, and is not at its [WIP limit](columns.md#wip-limits).
+3. The server loads the record through the board's `query()` and checks the rules: the user [may move it](#who-may-move), both columns are visible to this user, the card is not [locked](cards.md#locking-a-card), the source is `draggable`, the target is `droppable`, `accepts` the source, and is not at its [WIP limit](columns.md#wip-limits).
 4. Your move logic runs (by default: set the column attribute and save).
 5. The server answers with the card as it looks now; the card flashes once. If anything refused the move, the card slides back and the reason is shown as a notification.
 
 "Move to…" in the card's menu does the same without dragging, for touch screens and keyboards.
+
+## Who may move
+
+`authorizeMoves()` says who may move a card (a drag, a reorder, "Move to…", a bulk move); the column rules and `Card::locked()` say what may change. By default a move needs the model policy's `update` ability, when the model has a policy with an `update` method. On a `KanbanResourcePage` it needs the resource's `canEdit($record)`, which asks the same policy unless your resource says otherwise. A card the user may not update is drawn locked (the drag never starts, no "Move to…" in its menu) and its moves are refused on the server with "You cannot move this card." whatever the browser sent.
+
+```php
+->authorizeMoves(fn (Task $task) => auth()->user()->can('reassign', $task))
+->authorizeMoves(true)   // anyone who sees the board
+```
+
+The answer is cached per record for the request, so a policy that runs a query runs it once per card.
 
 ## Undo
 

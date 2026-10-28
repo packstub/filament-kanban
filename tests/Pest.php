@@ -2,6 +2,7 @@
 
 use Packstub\Kanban\Tests\Fixtures\Project;
 use Packstub\Kanban\Tests\Fixtures\Task;
+use Packstub\Kanban\Tests\Fixtures\User;
 use Packstub\Kanban\Tests\TestCase;
 
 pest()->extend(TestCase::class)->in('Feature');
@@ -15,4 +16,9 @@ function task(string $title, string $status = 'todo', array $attributes = []): T
 function project(string $name): Project
 {
     return Project::query()->create(['name' => $name]);
+}
+
+function user(): User
+{
+    return User::query()->create(['name' => 'Ana', 'email' => 'ana@example.test', 'password' => 'secret']);
 }

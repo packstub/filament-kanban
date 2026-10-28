@@ -18,7 +18,7 @@
     --ps-kanban-soft: var(--gray-600);
     --ps-kanban-ring: var(--primary-500);
     --ps-kanban-radius: 0.75rem;   /* the container's, as a table's (rounded-xl) */
-    --ps-kanban-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --ps-kanban-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);   /* a table's (shadow-sm) */
     --ps-kanban-outline: rgb(9 9 11 / 0.05);  /* ring-gray-950/5 */
     --ps-kanban-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
@@ -30,6 +30,8 @@
     background: var(--ps-kanban-bg);
     box-shadow: var(--ps-kanban-shadow), 0 0 0 1px var(--ps-kanban-outline);
     color: var(--ps-kanban-text);
+    font-size: 0.875rem;   /* text-sm, as a table's cells: unstyled text inside reads the same */
+    line-height: 1.25rem;
 }
 
 .dark .ps-kanban {
@@ -96,7 +98,6 @@
 .ps-kanban-filter-stacked .fi-input-wrp, .ps-kanban-filter-stacked .ps-kanban-field, .ps-kanban-filter-stacked .fi-select-input { width: 100%; }
 .ps-kanban-filter-stacked .ps-kanban-range { display: grid; grid-template-columns: 1fr 1fr; }
 .ps-kanban-filter-label { font-size: 0.875rem; line-height: 1.5rem; font-weight: 500; color: var(--ps-kanban-text); }
-.ps-kanban-filters-trigger { position: relative; display: inline-flex; }
 .ps-kanban-filters-above .ps-kanban-filters-header { grid-column: 1 / -1; }
 
 /* ------------------------------------------------------------------ an indicator strip under the toolbar (fi-ta-selection-indicator) */
@@ -199,7 +200,6 @@ div.ps-kanban { visibility: visible; animation: none; }
 
 /* the focus-mode toggle and the density toggle show their state */
 .ps-kanban-toolbar .fi-icon-btn[aria-pressed="true"] { background: var(--ps-kanban-surface); color: var(--ps-kanban-text); }
-.ps-kanban-filters-trigger, .ps-kanban-columns-trigger { position: relative; display: inline-flex; }
 
 /* the columns manager (fi-ta-col-manager): a heading, a checkbox row per column with its dot and count */
 .ps-kanban-columns { display: grid; gap: 1rem; padding: 1.5rem; }
@@ -490,8 +490,8 @@ div.ps-kanban { visibility: visible; animation: none; }
 .dark .ps-kanban-card-menu:hover { background: rgb(255 255 255 / 0.08); }
 @media (hover: none) { .ps-kanban-card-menu { opacity: 1; } .ps-kanban-fold, .ps-kanban-create, .ps-kanban-col-menu { opacity: 1; } }
 
-/* The card's menu opens inside the card, so the column's scroll never clips it: the dropdown panel, flattened */
-.ps-kanban-card-popover { position: static; width: auto; min-width: 0; max-width: none; margin: 0 0.4rem 0.4rem; box-shadow: none; }
+/* The card's menu floats over the board (placeMenu() fixes it to the viewport, so the column's scroll never clips it) as the dropdown panel it is */
+.ps-kanban-card-popover { z-index: 40; }
 
 .ps-kanban-card-pending { opacity: 0.6; cursor: progress; }
 .ps-kanban-card-flash { animation: ps-kanban-flash 0.9s ease-out; }
