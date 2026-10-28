@@ -79,26 +79,23 @@
 /* ------------------------------------------------------------------ filters */
 
 /* inline in the toolbar: fields in a row, the label as each wrapper's prefix */
+/* Filament's schema draws its fields on a grid; in the toolbar and the "above" row they sit on one wrapping line */
 .ps-kanban-filters-inline { display: contents; }
-.ps-kanban-filter { display: flex; align-items: center; gap: 0.5rem; }
+.ps-kanban-filters-inline .fi-sc, .ps-kanban-filters-above > .fi-sc { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ps-kanban-filters-above > .fi-sc { align-items: flex-start; gap: 1rem; }
+.ps-kanban-filters-above > .fi-sc > .fi-sc-component { min-width: 14rem; }
+/* a date range's two pickers side by side */
+.ps-kanban-filters-inline .fi-sc .fi-sc-component .fi-grid { display: flex; gap: 0.35rem; }
 .ps-kanban-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
 .ps-kanban-toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
 
-/* a filter that narrows the rows wears the primary ring, as an active state */
-.ps-kanban-filter-on .fi-input-wrp { --tw-ring-color: var(--ps-kanban-ring); box-shadow: 0 0 0 1px var(--ps-kanban-ring); }
-
-/* the funnel's dropdown panel and the "above" row: stacked, a label over each field (fi-ta-filters) */
-.ps-kanban-filters-panel, .ps-kanban-filters-above { display: grid; gap: 1rem; }
+/* the funnel's panel and the "above" row wear a table's filters classes (fi-ta-filters): the heading with the reset link, then Filament's fields */
 .ps-kanban-filters-panel { padding: 1.5rem; }
-.ps-kanban-filters-above { padding: 1rem; border-bottom: 1px solid var(--ps-kanban-border); grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.ps-kanban-filters-panel, .ps-kanban-filters-above { display: grid; gap: 1rem; }
+.ps-kanban .fi-ta-filters-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.ps-kanban .fi-ta-filters-heading { font-size: 1rem; line-height: 1.5rem; font-weight: 600; color: var(--ps-kanban-text); }
+.ps-kanban-filters-above { padding: 1rem; border-bottom: 1px solid var(--ps-kanban-border); }
 @media (min-width: 40rem) { .ps-kanban-filters-above { padding-inline: 1.5rem; } }
-.ps-kanban-filters-header { display: flex; align-items: center; justify-content: space-between; }
-.ps-kanban-filters-heading { font-size: 1rem; line-height: 1.5rem; font-weight: 600; color: var(--ps-kanban-text); }
-.ps-kanban-filter-stacked { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-.ps-kanban-filter-stacked .fi-input-wrp, .ps-kanban-filter-stacked .ps-kanban-field, .ps-kanban-filter-stacked .fi-select-input { width: 100%; }
-.ps-kanban-filter-stacked .ps-kanban-range { display: grid; grid-template-columns: 1fr 1fr; }
-.ps-kanban-filter-label { font-size: 0.875rem; line-height: 1.5rem; font-weight: 500; color: var(--ps-kanban-text); }
-.ps-kanban-filters-above .ps-kanban-filters-header { grid-column: 1 / -1; }
 
 /* ------------------------------------------------------------------ an indicator strip under the toolbar (fi-ta-selection-indicator) */
 

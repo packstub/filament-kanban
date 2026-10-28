@@ -169,4 +169,4 @@ class ProjectBoard extends Component implements HasActions, HasSchemas
 }
 ```
 
-`HasActions` and `HasSchemas` are only needed for [card and create actions](actions.md).
+`HasSchemas` and `InteractsWithSchemas` are required: the filters are Filament form components rendered through the component's `kanbanFiltersForm` schema. `HasActions` is only needed for [card and create actions](actions.md).

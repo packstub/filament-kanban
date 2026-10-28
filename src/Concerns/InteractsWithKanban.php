@@ -12,9 +12,9 @@ use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
 use Livewire\Livewire;
 use Packstub\Kanban\Board;
+use Packstub\Kanban\Enums\FiltersLayout;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Filter;
-use Packstub\Kanban\Support\FilterSelect;
 
 /**
  * The server side of a board, for any Livewire component (the plugin's pages use it).
@@ -192,87 +192,79 @@ trait InteractsWithKanban
     }
 
     /**
-     * A filter's options for the browser's select: the listed ones (at most optionsLimit),
-     * or the ones matching what the user typed in a searchable select.
+     * The filters' fields hold their state here (Filament's fields need a Livewire
+     * path); the browser owns the real state and keeps this one in step
+     * (`syncFields()`), never the other way round: a change is dispatched by the
+     * field (`Filter::toFormComponent()`) and applied by the Alpine component.
      *
-     * @return list<array{value: string, label: string}>
+     * @var array<string, mixed>
      */
-    #[Renderless]
-    public function kanbanFilterOptions(mixed $name, mixed $search = null): array
-    {
-        $filter = is_string($name) ? $this->getKanban()->getFilter($name) : null;
+    public array $kanbanFilters = [];
 
-        if ($filter === null || $filter->isToggle() || $filter->isDateRange() || ($search !== null && ! is_string($search))) {
-            return [];
+    /**
+     * Every field's path exists before the browser entangles it (Livewire refuses a
+     * missing one), as a Filament page fills its form on mount. Livewire runs this
+     * trait hook on the first request only; later requests carry the browser's state.
+     * The page itself is drawn as its URL says (kanbanUrlState()): the fields show
+     * that state from the first paint, before the browser's syncFields() runs.
+     */
+    public function mountInteractsWithKanban(): void
+    {
+        $this->getSchema('kanbanFiltersForm')?->fill();
+
+        $board = $this->getKanban();
+
+        if (! $board->persistsInUrl() || Livewire::isLivewireRequest()) {
+            return;
         }
 
-        $search = $search === null ? '' : mb_substr(trim($search), 0, 200);
-
-        $options = $search === ''
-            ? array_slice($filter->getOptions(), 0, $filter->getOptionsLimit(), preserve_keys: true)
-            : $filter->getSearchResults($search);
-
-        return collect($options)->map(fn ($label, $value) => ['value' => (string) $value, 'label' => (string) $label])->values()->all();
+        foreach ($this->kanbanUrlState($board)['filters'] as $name => $value) {
+            $this->kanbanFilters[$name] = $this->kanbanFieldState($board->getFilter($name), $value);
+        }
     }
 
-    /** The label of one value (a selected option restored from the URL), null when the filter does not know it. */
-    #[Renderless]
-    public function kanbanFilterOptionLabel(mixed $name, mixed $value = null): ?string
+    /** The filters as Filament's own form components, where filtersLayout() puts them. */
+    public function kanbanFiltersForm(Schema $schema): Schema
     {
-        $filter = is_string($name) ? $this->getKanban()->getFilter($name) : null;
+        $board = $this->getKanban();
+        $inline = $board->getFiltersLayout() === FiltersLayout::Toolbar;
 
-        return $filter === null || $filter->isToggle() || $filter->isDateRange() || ! is_string($value) || $value === '' ? null : $filter->getOptionLabel($value);
+        return $schema
+            ->statePath('kanbanFilters')
+            ->components(array_map(
+                fn (Filter $filter) => $filter->toFormComponent($inline, (int) config('packstub-kanban.first_day_of_week', 1), config('packstub-kanban.date_format') ?? 'M j, Y'),
+                $this->kanbanUsableFilters(),
+            ));
     }
 
     /**
-     * The labels of a multiple select filter's values (ones restored from the URL),
-     * as the browser's select expects them (a list, read as `option.value` and
-     * `option.label`); a value with no label is left out.
+     * The board's filters, each checked usable (a toggle without query() fails here, on
+     * the first render, not when a user clicks it).
      *
-     * @return list<array{value: string, label: string}>
+     * @return list<Filter>
      */
-    #[Renderless]
-    public function kanbanFilterOptionLabels(mixed $name, mixed $values = []): array
+    protected function kanbanUsableFilters(): array
     {
-        $filter = is_string($name) ? $this->getKanban()->getFilter($name) : null;
+        $filters = $this->getKanban()->getFilters();
 
-        if ($filter === null || $filter->isToggle() || $filter->isDateRange() || ! is_array($values)) {
-            return [];
+        foreach ($filters as $filter) {
+            $filter->assertUsable();
         }
 
-        $labels = [];
-
-        // At most optionsLimit() distinct values: each one not among the options costs a getOptionLabelUsing() call.
-        $values = array_slice(array_values(array_unique(array_filter($values, fn ($value) => (is_string($value) && $value !== '' && mb_strlen($value) <= 255) || is_int($value)))), 0, $filter->getOptionsLimit());
-
-        foreach ($values as $value) {
-            $label = $filter->getOptionLabel($value);
-
-            if ($label !== null) {
-                $labels[] = ['value' => (string) $value, 'label' => $label];
-            }
-        }
-
-        return $labels;
+        return $filters;
     }
 
     /**
-     * A schema never rendered, one FilterSelect per select filter, keyed
-     * `kanbanFilters.<filter>`: Filament 4.16+ and 5.11+ ask a select's options
-     * through `callSchemaComponentMethod` with that key (see partials/select).
-     * Filament caches it by name on the first call.
+     * A filter's URL state (`Filter::state()`) in the shape its field holds: null for
+     * "all", a list for a multiple select, a bool for a toggle, `{from, until}` for a range.
      */
-    public function kanbanFiltersSchema(Schema $schema): Schema
+    protected function kanbanFieldState(?Filter $filter, mixed $value): mixed
     {
-        $components = [];
-
-        foreach ($this->getKanban()->getFilters() as $filter) {
-            if ($filter->isSelect() || $filter->isBoolean()) {
-                $components[] = FilterSelect::make($filter->getName())->key($filter->getName());
-            }
+        if ($filter === null || $filter->isDateRange() || $filter->isToggle() || $filter->isMultiple()) {
+            return $value;
         }
 
-        return $schema->components($components);
+        return $value === '' ? null : $value;
     }
 
     /**
@@ -400,9 +392,7 @@ trait InteractsWithKanban
         $actions = $this instanceof HasActions;
 
         // A toggle without query() fails here, on the first render, not when a user clicks it.
-        foreach ($board->getFilters() as $filter) {
-            $filter->assertUsable();
-        }
+        $filters = $this->kanbanUsableFilters();
 
         // The page itself (not a Livewire update) is drawn as its URL says: a bookmarked or
         // shared board shows filtered from the start, with no second request.
@@ -417,7 +407,7 @@ trait InteractsWithKanban
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
-            'filters' => array_map(fn (Filter $filter) => $filter->toArray(), $board->getFilters()),
+            'filters' => array_map(fn (Filter $filter) => $filter->toArray(), $filters),
             'filtersLayout' => $board->getFiltersLayout()->value,
             'selectable' => $board->isSelectable(),
             'maxSelection' => Board::MAX_SELECTION,

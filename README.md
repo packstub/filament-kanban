@@ -191,7 +191,7 @@ Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 ->perColumn(50)
 ```
 
-Typing filters the loaded cards at once, then the server brings the matching cards of every column. A `Filter` is one of Filament's own fields: a select (one option, several with `multiple()`, typed with `searchable()`), a Yes / No select (`boolean()`), a checkbox (`toggle()`) or a date range (`dateRange()`); every value is checked again on the server. The search and the active filters stay in the URL, so a filtered board can be bookmarked and shared. Each column loads its cards in pages as you scroll.
+Typing filters the loaded cards at once, then the server brings the matching cards of every column. A `Filter` is one of Filament's own fields: a select (one option, several with `multiple()`, typed with `searchable()`), a Yes / No select (`boolean()`), a toggle switch (`toggle()`) or a date range (`dateRange()`); every value is checked again on the server. The search and the active filters stay in the URL, so a filtered board can be bookmarked and shared. Each column loads its cards in pages as you scroll.
 
 Read more: [Filters](https://packstub.dev/docs/filament-kanban/filters).
 

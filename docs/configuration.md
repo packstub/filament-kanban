@@ -41,7 +41,7 @@ Without `searchable()` the search box is not shown.
 
 ## Filters
 
-`filters([...])` puts Filament's own fields in the toolbar, behind a funnel button by default (`filtersLayout()` puts them inline or on a row above the columns): a select (one option, several with `multiple()`, typed with `searchable()`), a Yes / No select (`Filter::boolean()`), a checkbox (`Filter::toggle()`) and a date range (`Filter::dateRange()`). Every value is checked again on the server, and the search and the active filters are kept in the page's URL. See [Filters](filters.md).
+`filters([...])` puts Filament's own fields in the toolbar, behind a funnel button by default (`filtersLayout()` puts them inline or on a row above the columns): a select (one option, several with `multiple()`, typed with `searchable()`), a Yes / No select (`Filter::boolean()`), a toggle switch (`Filter::toggle()`) and a date range (`Filter::dateRange()`). Every value is checked again on the server, and the search and the active filters are kept in the page's URL. See [Filters](filters.md).
 
 ## Paging
 
