@@ -6,6 +6,8 @@ use Packstub\Kanban\Board;
 use Packstub\Kanban\Enums\FiltersLayout;
 use Packstub\Kanban\Filter;
 use Packstub\Kanban\Tests\Fixtures\PlainBoard;
+use Packstub\Kanban\Tests\Fixtures\Project;
+use Packstub\Kanban\Tests\Fixtures\Task;
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
 /*
@@ -188,8 +190,9 @@ it('answers the options, a search and the labels for the browser\'s select', fun
         ->assertReturned(null)
         ->call('kanbanFilterOptionLabel', 'urgent', '1')
         ->assertReturned(null)
+        // A list, as Filament's select reads it (`option.value`, `option.label`), in the order asked.
         ->call('kanbanFilterOptionLabels', 'project_id', [(string) $globex->id, '999', (string) $acme->id, '', ['x']])
-        ->assertReturned([(string) $globex->id => 'Globex', (string) $acme->id => 'Acme'])
+        ->assertReturned([['value' => (string) $globex->id, 'label' => 'Globex'], ['value' => (string) $acme->id, 'label' => 'Acme']])
         ->call('kanbanFilterOptionLabels', 'project_id', 'not a list')
         ->assertReturned([])
         ->call('kanbanFilterOptionLabels', 'nope', ['1'])
@@ -284,4 +287,69 @@ it('renders the funnel only with filters, the fields inline in the toolbar, or a
         }
     };
     expect(Livewire::test($dated::class)->html())->toContain('fi-fo-date-time-picker')->toContain('ps-kanban-range')->toContain('firstDayOfWeek: 1');
+});
+
+it('caps the values a searchable multiple filter, a label lookup and a search take', function () {
+    $lookups = 0;
+    $filter = Filter::select('owner')->multiple()->searchable()->optionsLimit(5)
+        ->options(['a' => 'A'])
+        ->getOptionLabelUsing(function (string $value) use (&$lookups) {
+            $lookups++;
+
+            return "L{$value}";
+        })
+        ->getSearchResultsUsing(fn (string $search) => collect(['s' => mb_strlen($search)]));
+
+    $applied = null;
+    $filter->query(function ($query, array $values) use (&$applied) {
+        $applied = $values;
+    });
+    $filter->apply(Task::query(), array_map('strval', range(1, 50)));
+
+    expect($applied)->toHaveCount(5)->and($applied)->toBe(['1', '2', '3', '4', '5']);
+
+    $filter->apply(Task::query(), [str_repeat('x', 256), 'ok']);
+    expect($applied)->toBe(['ok']);
+
+    $component = new class extends TaskBoard
+    {
+        public static ?Filter $filter = null;
+
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->filters([self::$filter]);
+        }
+    };
+    $component::$filter = $filter;
+
+    Livewire::test($component::class)
+        ->call('kanbanFilterOptionLabels', 'owner', array_merge(array_map('strval', range(1, 40)), ['1', '1']))
+        ->assertReturned([['value' => '1', 'label' => 'L1'], ['value' => '2', 'label' => 'L2'], ['value' => '3', 'label' => 'L3'], ['value' => '4', 'label' => 'L4'], ['value' => '5', 'label' => 'L5']])
+        ->call('kanbanFilterOptions', 'owner', str_repeat('q', 500))
+        ->assertReturned([['value' => 's', 'label' => '200']]);
+
+    expect($lookups)->toBe(5);
+});
+
+it('answers Filament 4.16+ option requests through the kanbanFilters schema by key', function () {
+    $acme = project('Acme');
+    $beta = project('Beta');
+
+    $component = new class extends TaskBoard
+    {
+        public function kanban(Board $board): Board
+        {
+            return parent::kanban($board)->filters([Filter::select('project_id')->searchable()->options(fn () => Project::query()->orderBy('name')->pluck('name', 'id')->all())]);
+        }
+    };
+
+    Livewire::test($component::class)
+        ->call('callSchemaComponentMethod', 'kanbanFilters.project_id', 'getOptionsForJs')
+        ->assertReturned([['value' => (string) $acme->id, 'label' => 'Acme'], ['value' => (string) $beta->id, 'label' => 'Beta']])
+        ->call('callSchemaComponentMethod', 'kanbanFilters.project_id', 'getSearchResultsForJs', ['search' => 'bet'])
+        ->assertReturned([['value' => (string) $beta->id, 'label' => 'Beta']])
+        ->call('callSchemaComponentMethod', 'kanbanFilters.project_id', 'getOptionLabelsForJs')
+        ->assertReturned([])
+        ->call('callSchemaComponentMethod', 'kanbanFilters.nope', 'getOptionsForJs')
+        ->assertReturned(null);
 });

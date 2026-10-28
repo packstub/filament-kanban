@@ -4,6 +4,7 @@ namespace Packstub\Kanban\Concerns;
 
 use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
+use Filament\Schemas\Schema;
 use Filament\Support\Enums\IconSize;
 use Filament\Support\View\ComponentAttributeBag;
 use Filament\Support\View\Components\DropdownComponent\ItemComponent;
@@ -13,6 +14,7 @@ use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
 use Packstub\Kanban\Filter;
+use Packstub\Kanban\Support\FilterSelect;
 
 /**
  * The server side of a board, for any Livewire component (the plugin's pages use it).
@@ -204,7 +206,9 @@ trait InteractsWithKanban
             return [];
         }
 
-        $options = $search === null || $search === ''
+        $search = $search === null ? '' : mb_substr(trim($search), 0, 200);
+
+        $options = $search === ''
             ? array_slice($filter->getOptions(), 0, $filter->getOptionsLimit(), preserve_keys: true)
             : $filter->getSearchResults($search);
 
@@ -221,9 +225,11 @@ trait InteractsWithKanban
     }
 
     /**
-     * The labels of several values (a multiple select's), keyed by value; values the filter does not know are left out.
+     * The labels of a multiple select filter's values (ones restored from the URL),
+     * as the browser's select expects them (a list, read as `option.value` and
+     * `option.label`); a value with no label is left out.
      *
-     * @return array<string, string>
+     * @return list<array{value: string, label: string}>
      */
     #[Renderless]
     public function kanbanFilterOptionLabels(mixed $name, mixed $values = []): array
@@ -236,13 +242,37 @@ trait InteractsWithKanban
 
         $labels = [];
 
+        // At most optionsLimit() distinct values: each one not among the options costs a getOptionLabelUsing() call.
+        $values = array_slice(array_values(array_unique(array_filter($values, fn ($value) => (is_string($value) && $value !== '' && mb_strlen($value) <= 255) || is_int($value)))), 0, $filter->getOptionsLimit());
+
         foreach ($values as $value) {
-            if ((is_string($value) || is_int($value)) && ! blank($value) && ($label = $filter->getOptionLabel($value)) !== null) {
-                $labels[(string) $value] = $label;
+            $label = $filter->getOptionLabel($value);
+
+            if ($label !== null) {
+                $labels[] = ['value' => (string) $value, 'label' => $label];
             }
         }
 
         return $labels;
+    }
+
+    /**
+     * A schema never rendered, one FilterSelect per select filter, keyed
+     * `kanbanFilters.<filter>`: Filament 4.16+ and 5.11+ ask a select's options
+     * through `callSchemaComponentMethod` with that key (see partials/select).
+     * Filament caches it by name on the first call.
+     */
+    public function kanbanFiltersSchema(Schema $schema): Schema
+    {
+        $components = [];
+
+        foreach ($this->getKanban()->getFilters() as $filter) {
+            if ($filter->isSelect() || $filter->isBoolean()) {
+                $components[] = FilterSelect::make($filter->getName())->key($filter->getName());
+            }
+        }
+
+        return $schema->components($components);
     }
 
     /**

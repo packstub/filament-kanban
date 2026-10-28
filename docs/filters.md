@@ -41,7 +41,7 @@ Filter::select('tags')->label('Tags')->multiple()->options(Tag::pluck('name', 'i
 
 ### Searchable
 
-`searchable()` lets the user type to find an option, for a long list (every user, every customer). With `preload()` (the default) the options are sent with the board and the search runs on the server over their labels, or through `getSearchResultsUsing()`; `preload(false)` sends nothing until the user types. `getOptionLabelUsing()` names a value that is not among the listed options (one restored from the URL), `optionsLimit()` caps a list or a search (50 by default).
+`searchable()` lets the user type to find an option, for a long list (every user, every customer). With `preload()` (the default) the options are sent with the board and the search runs on the server over their labels, or through `getSearchResultsUsing()`; `preload(false)` sends nothing until the user types. `getOptionLabelUsing()` names a value that is not among the listed options (one restored from the URL), `optionsLimit()` caps a list or a search (50 by default). It also caps the values a searchable `multiple()` filter accepts in one request and the labels looked up for them: a searchable select takes any key, so the list is bounded where a listed one is bounded by its options. A search term is read up to 200 characters.
 
 ```php
 Filter::select('customer_id')->label('Customer')->searchable()->preload(false)
@@ -116,4 +116,4 @@ The keys are the same for every board, so one URL-persisted board per page: with
 | `preload(bool = true)` | `true` | Send the options with the board, or wait for a search. |
 | `getSearchResultsUsing(?Closure)` | the labels | `fn (string $search): array`. |
 | `getOptionLabelUsing(?Closure)` | the options | `fn (string $value): ?string`, for a value outside the listed options. |
-| `optionsLimit(int)` | `50` | The most options a list or a search shows. |
+| `optionsLimit(int)` | `50` | The most options a list or a search shows, and the most values a searchable `multiple()` filter accepts. |

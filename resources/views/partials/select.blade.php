@@ -7,12 +7,32 @@
     with `active[filter.name]` holding '' (none), a value, or a list for a multiple.
 --}}
 <div
+    {{--
+        Filament 4.16+ and 5.11+ no longer take the four closures below: their select asks
+        one scope up for `$callSchemaComponentMethod` (5.11+) or `$getOptionLabel` /
+        `$getOptionLabelsForJs` (4.16+), and for its options through the component's
+        `callSchemaComponentMethod` with `key` (4.16+), answered by the FilterSelect
+        schema (kanbanFiltersSchema). Each resolves here, with the filter's name and value.
+    --}}
+    x-data="{
+        $callSchemaComponentMethod: (method, args = {}) => method === 'getOptionsForJs' ? $wire.kanbanFilterOptions(filter.name)
+            : method === 'getSearchResultsForJs' ? $wire.kanbanFilterOptions(filter.name, args.search ?? '')
+            : method === 'getOptionLabel' ? $wire.kanbanFilterOptionLabel(filter.name, active[filter.name] || null)
+            : method === 'getOptionLabelsForJs' ? $wire.kanbanFilterOptionLabels(filter.name, active[filter.name] || [])
+            : Promise.resolve(null),
+        $getOptionLabel: () => $wire.kanbanFilterOptionLabel(filter.name, active[filter.name] || null),
+        $getOptionLabelsForJs: () => $wire.kanbanFilterOptionLabels(filter.name, active[filter.name] || []),
+    }"
+    style="display: contents"
+>
+<div
     x-load
     x-load-src="{{ \Filament\Support\Facades\FilamentAsset::getAlpineComponentSrc('select', 'filament/forms') }}"
     x-data="selectFormComponent({
         canOptionLabelsWrap: false,
         canSelectPlaceholder: true,
         clearButtonLabel: @js(__('filament-forms::components.select.actions.clear.label')),
+        errorMessage: null,
         getOptionLabelUsing: async () => await $wire.kanbanFilterOptionLabel(filter.name, active[filter.name] || null),
         getOptionLabelsUsing: async () => await $wire.kanbanFilterOptionLabels(filter.name, active[filter.name] || []),
         getOptionsUsing: async () => await $wire.kanbanFilterOptions(filter.name),
@@ -21,6 +41,7 @@
         hasDynamicSearchResults: filter.searchable,
         hasInitialNoOptionsMessage: false,
         id: 'ps-kanban-filter-' + filter.name,
+        key: 'kanbanFilters.' + filter.name,
         initialOptionLabel: null,
         initialOptionLabels: [],
         initialState: filter.multiple ? (active[filter.name] || []) : (active[filter.name] || null),
@@ -50,10 +71,13 @@
         statePath: 'kanban.' + filter.name,
     })"
     x-init="$watch('state', (value) => $dispatch('ps-kanban-select', value))"
+    {{-- the component's state flows in (Reset filters, a value restored); a pick flows out through the watcher, and pickSelect() ignores one that changes nothing --}}
+    x-effect="state = filter.multiple ? (active[filter.name] || []) : (active[filter.name] || null)"
     x-on:ps-kanban-select="pickSelect(filter.name, $event.detail)"
     x-on:keydown.esc="select.dropdown.isActive && $event.stopPropagation()"
     x-bind:aria-label="filter.label"
     class="fi-select-input"
 >
     <div x-ref="select"></div>
+</div>
 </div>
