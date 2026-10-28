@@ -16,6 +16,7 @@ class KanbanServiceProvider extends PackageServiceProvider
     {
         $package
             ->name(static::$name)
+            ->hasConfigFile()
             ->hasViews(static::$name)
             ->hasTranslations();
     }

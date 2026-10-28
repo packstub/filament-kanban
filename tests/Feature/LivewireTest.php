@@ -28,7 +28,7 @@ it('renders the board with its state as JSON for the browser', function () {
         ->assertSeeHtml('packstub/filament-kanban/components/kanban.js')
         ->assertSee('Write docs')
         ->assertSeeHtml('wire:ignore')
-        ->assertSeeHtml('<style>.pk { visibility: hidden; animation: pk-reveal 0s 1.5s forwards; }') // revealed after 1.5 s should the stylesheet never arrive
+        ->assertSeeHtml('<style>.ps-kanban { visibility: hidden; animation: ps-kanban-reveal 0s 1.5s forwards; }') // revealed after 1.5 s should the stylesheet never arrive
         ->assertSeeHtml('aria-live="polite"')
         ->assertSeeHtml('role="list"')
         ->assertSeeHtml('role="tablist"');
@@ -247,9 +247,10 @@ it('tells the browser each filter\'s type and whether to keep the state in the U
 
     expect($config['url'])->toBeTrue()
         ->and($config['filters'])->toBe([
-            ['name' => 'project_id', 'label' => 'Project', 'type' => 'multiple', 'options' => [['value' => (string) $acme->id, 'label' => 'Acme']]],
-            ['name' => 'urgent', 'label' => 'Urgent', 'type' => 'toggle', 'options' => []],
-        ]);
+            ['name' => 'project_id', 'label' => 'Project', 'type' => 'select', 'multiple' => true, 'searchable' => false, 'optionsLimit' => 50, 'options' => [['value' => (string) $acme->id, 'label' => 'Acme']]],
+            ['name' => 'urgent', 'label' => 'Urgent', 'type' => 'toggle', 'multiple' => false, 'searchable' => false, 'optionsLimit' => 50, 'options' => []],
+        ])
+        ->and($config['filtersLayout'])->toBe('dropdown');
 
     $component = new class extends TaskBoard
     {
@@ -291,7 +292,7 @@ it('draws a shared link filtered from the start, with what the URL says checked 
 it('turns a URL value into what the browser holds', function () {
     $select = Filter::make('status')->options(['open' => 'Open', 3 => 'Three']);
     $multiple = Filter::make('owner')->multiple()->options([1 => 'Ana', 2 => 'Dan']);
-    $toggle = Filter::make('mine')->toggle()->query(fn ($q) => $q);
+    $toggle = Filter::toggle('mine')->query(fn ($q) => $q);
 
     expect($select->state('open'))->toBe('open')
         ->and($select->state('3'))->toBe('3')
@@ -309,7 +310,7 @@ it('refuses to render a toggle filter without a query, before anyone clicks it',
     {
         public function kanban(Board $board): Board
         {
-            return parent::kanban($board)->filters([Filter::make('mine')->toggle()]);
+            return parent::kanban($board)->filters([Filter::toggle('mine')]);
         }
     };
 
@@ -323,7 +324,7 @@ it('refuses to render a toggle filter without a query, before anyone clicks it',
         }
 
         expect($e)->toBeInstanceOf(LogicException::class)
-            ->and($e->getMessage())->toContain('Kanban filter [mine] is a toggle');
+            ->and($e->getMessage())->toContain('Filter [mine] is a toggle');
     }
 });
 

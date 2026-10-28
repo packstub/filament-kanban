@@ -1,6 +1,6 @@
 # Configuration
 
-Everything is configured on the `Board` in your page's `kanban()` method; there is no config file.
+Everything is configured on the `Board` in your page's `kanban()` method. A small config file (`php artisan vendor:publish --tag=packstub-kanban-config`) holds what applies to every board: where the filters are shown (`filters_layout`), the date format and the first day of the week of a date-range filter's pickers (`date_format`, `first_day_of_week`).
 
 ```php
 public function kanban(Board $board): Board
@@ -13,7 +13,8 @@ public function kanban(Board $board): Board
         ->sortBy('amount', 'desc')                         // a column can override it
         ->reorderable('sort')                              // manual order, stored as integers
         ->searchable(['reference', 'company', 'owner.name'])
-        ->filters([Filter::make('owner_id')->options(fn () => User::pluck('name', 'id')->all())])
+        ->filters([Filter::select('owner_id')->options(fn () => User::pluck('name', 'id')->all())])
+        ->filtersLayout(FiltersLayout::Toolbar)            // inline, instead of behind a funnel button
         ->persistInUrl(false)                              // leave the search and filters out of the URL
         ->summarize(fn (Builder $query) => Number::currency($query->sum('amount'), 'USD'))
         ->cardActions([EditAction::make()->schema([...]), DeleteAction::make()])
@@ -40,46 +41,7 @@ Without `searchable()` the search box is not shown.
 
 ## Filters
 
-A `Filter` is a small select in the toolbar. By default a chosen value narrows the query with `where(<name>, <value>)`; give your own with `query()`. Values that are not among the options are ignored, so the browser cannot filter on anything you did not offer. The closure gets the value as a string, the option's key as the browser sends it (`"3"` for `User::pluck('name', 'id')`). Options given as a closure are resolved once per request: when the page draws the toolbar, and on a later refresh only once a value is set.
-
-```php
-Filter::make('owner_id')->label('Owner')->options(fn () => User::pluck('name', 'id')->all()),
-
-Filter::make('due')->options(['overdue' => 'Overdue', 'week' => 'Due this week'])
-    ->query(fn (Builder $query, string $value) => match ($value) {
-        'overdue' => $query->where('due_at', '<', now()),
-        'week' => $query->whereBetween('due_at', [now(), now()->endOfWeek()]),
-    }),
-```
-
-### Several at once
-
-`multiple()` turns the select into a popover of checkboxes, with the number of chosen options on the button. The default narrows with `whereIn(<name>, <values>)`; a `query()` closure gets the chosen values as a list of strings, in the options' order. A value outside the options is dropped on its own, the others still apply.
-
-```php
-Filter::make('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
-
-Filter::make('tags')->multiple()->options(Tag::pluck('name', 'id')->all())
-    ->query(fn (Builder $query, array $values) => $query->whereHas('tags', fn ($q) => $q->whereKey($values))),
-```
-
-### On or off
-
-`toggle()` is a single chip with the filter's label and no options: "Overdue", "Assigned to me". There is no default query, so `query()` is required; it gets `true` when the chip is on and is not called at all when it is off.
-
-```php
-Filter::make('mine')->label('Assigned to me')->toggle()
-    ->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
-
-Filter::make('overdue')->toggle()
-    ->query(fn (Builder $query) => $query->where('due_at', '<', now())),
-```
-
-## Search and filters in the URL
-
-The search and the active filters are kept in the page's query string (`?search=acme&filters[owner_id][0]=3&filters[owner_id][1]=7&filters[mine]=1`), replaced in place as they change, so a filtered board can be bookmarked, shared and reloaded; an untouched board keeps a clean URL. The URL is trusted no more than the browser is: a filter the board does not define is ignored, a value outside the options is dropped in the browser and on the server. The page is drawn filtered from the start, with no second request; a board drawn later (lazy, deferred) reads the URL in the browser and refreshes once. `persistInUrl(false)` leaves the URL alone.
-
-The keys are the same for every board, so one URL-persisted board per page: with two boards on a page, or a page that uses `?search=` for something else, `persistInUrl(false)` on the others. A board only rewrites its own keys (`search` when it is searchable, `filters[...]` for the filters it defines) and leaves every other parameter alone.
+`filters([...])` puts Filament's own fields in the toolbar, behind a funnel button by default (`filtersLayout()` puts them inline or on a row above the columns): a select (one option, several with `multiple()`, typed with `searchable()`), a Yes / No select (`Filter::boolean()`), a checkbox (`Filter::toggle()`) and a date range (`Filter::dateRange()`). Every value is checked again on the server, and the search and the active filters are kept in the page's URL. See [Filters](filters.md).
 
 ## Paging
 
@@ -148,17 +110,7 @@ Folded and hidden columns, folded lanes, the sidebar toggle, the density and the
 
 ## Styling
 
-The stylesheet is plain CSS on Filament's colour variables and follows dark mode. Restyle it with the `--pk-*` variables on `.pk` from your theme:
-
-```css
-.fi-body .pk {
-    --pk-col-width: 20rem;
-    --pk-radius: 0.75rem;
-    --pk-ring: var(--primary-500);
-}
-```
-
-The plugin's stylesheet loads after your theme, so prefix your overrides (`.fi-body .pk`).
+The board is a table-style container on Filament's own components, styled by the panel's theme; the `--ps-kanban-*` variables on `.ps-kanban` set the rest (column width, radii, the ring). See [Styling](styling.md).
 
 ## Translations
 
@@ -181,7 +133,8 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `sortBy(string, string = 'asc')` | key order | Default order in every column. |
 | `reorderable(string = 'sort')` | off | Manual order inside a column. |
 | `searchable(array)` | off | Attributes the server searches. |
-| `filters(array)` | `[]` | `Filter`s in the toolbar. |
+| `filters(array)` | `[]` | `Filter`s in the toolbar; see [Filters](filters.md). |
+| `filtersLayout(FiltersLayout\|string\|null)` | the config's `filters_layout` | `Dropdown` (a funnel button), `Toolbar` (inline) or `AboveContent` (a row above the columns). |
 | `persistInUrl(bool)` | `true` | Keep the search and filters in the query string. |
 | `summarize(?Closure)` | off | `fn (Builder $query, Column $column): ?string`. |
 | `cardActions(array)` | `[]` | Filament actions in each card's menu. |
@@ -191,6 +144,7 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 | `swimlanes(?string, array\|Closure\|class-string\|null)` | off | Rows by an attribute: `Lane`s, an enum, or derived from the data. |
 | `createAction(?Action)` | off | A "+" on each droppable column. |
 | `moveUsing(Closure)` | set and save | `fn (Model $record, string $to, string $from, ?string $lane)`. |
+| `authorizeMoves(bool\|Closure)` | the policy's `update`; a resource page's `canEdit()` | Who may move a card; see [Who may move](moves.md#who-may-move). |
 | `perColumn(int)` | `50` | Cards per page in a column. |
 | `poll(string\|int\|null)` | off | `'10s'`, `'1m'`, milliseconds. |
 | `undo(bool\|int)` | `5` | "Undo" on the notification after a move, for this many seconds; `false` for none. |
@@ -214,11 +168,4 @@ php artisan vendor:publish --tag=packstub-kanban-translations
 
 ### Filter
 
-| Method | Default | |
-| --- | --- | --- |
-| `make(string $name)` | required | The attribute the default query narrows, and the key in the URL. |
-| `label(string\|Closure\|null)` | from the name | `owner_id` reads "Owner". |
-| `options(array\|Closure)` | `[]` | `[value => label]`; the only values the server accepts. |
-| `query(Closure)` | `where` / `whereIn` | `fn (Builder $query, string\|array\|true $value)`: a string, a list of strings for `multiple()`; required for `toggle()`. |
-| `multiple(bool = true)` | `false` | Several options at once; the query gets a list. |
-| `toggle(bool = true)` | `false` | An on/off chip without options; the query gets `true`. |
+`select($name)` (or `make()`), `boolean($name)`, `toggle($name)`, `dateRange($name)`, `label()`, `options()`, `query()`, `multiple()`, `searchable()`, `preload()`, `getSearchResultsUsing()`, `getOptionLabelUsing()`, `optionsLimit()`. See [Filters](filters.md).

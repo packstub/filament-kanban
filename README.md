@@ -16,17 +16,17 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 
 ## Features
 
-- **[Instant drag and drop](#instant-moves)**: a drop lands at once; if the server refuses, the card slides back with the reason.
-- **[Rules on the server](#columns-and-rules)**: columns from an enum, per-user columns, drop rules, read-only columns, locked cards and WIP limits.
-- **[Filament actions on cards](#card-actions) and [columns](https://packstub.dev/docs/filament-kanban/actions#column-actions)**: edit in a slide-over, delete or run your own actions, [create in a column](#create-in-a-column), act on a whole column.
-- **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title, kept current after every move.
-- **[Light on big boards](#cards)**: cards are drawn in the browser from JSON, so hundreds of them stay fast.
-- **[Search, filters and paging](#search-filters-and-paging)**: instant search, select, multi-select and toggle filters kept in the URL, infinite scroll per column.
-- **[Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)**: rows by assignee, priority or any attribute, derived from the data or defined.
-- **[Bulk selection](https://packstub.dev/docs/filament-kanban/actions#bulk-selection)**: select cards with Ctrl/⌘- or Shift-click, move them together or run a bulk action.
-- **[Shared boards](https://packstub.dev/docs/filament-kanban/configuration#realtime-with-echo)**: realtime with Laravel Echo or polling, a `CardMoved` event, browser events, and an Undo on every move.
-- **[Keyboard, screen readers and phones](https://packstub.dev/docs/filament-kanban/configuration#keyboard)**: cards reachable and movable without a mouse, moves announced, one column at a time with tabs on narrow screens, a compact density.
-- **Dark mode and translations**: English, Romanian, Russian and German included.
+- **[Instant drag and drop](#instant-moves)**: cards land at once; a refused move slides back.
+- **[Rules on the server](#columns-and-rules)**: enum columns, drop rules, WIP limits, locked cards.
+- **[Filament actions on cards and columns](#card-actions)**: edit, delete, create in a column, or your own.
+- **[Column summaries](#summaries-and-limits)**: a sum or an average under each column title.
+- **[Rich, fast cards](#cards)**: badges, due dates, progress, avatars; hundreds stay fast.
+- **[Search, filters and paging](#search-filters-and-paging)**: Filament's filter fields, kept in the URL.
+- **[Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)**: rows by assignee, priority or any attribute.
+- **[Bulk selection](https://packstub.dev/docs/filament-kanban/actions#bulk-selection)**: move or act on many cards at once.
+- **[Shared boards](https://packstub.dev/docs/filament-kanban/configuration#realtime-with-echo)**: realtime with Echo or polling, Undo on every move.
+- **[Keyboard, screen readers and phones](https://packstub.dev/docs/filament-kanban/configuration#keyboard)**: every move works without a mouse.
+- **[Dark mode and translations](https://packstub.dev/docs/filament-kanban/styling)**: English, Romanian, Russian and German.
 
 ## Compatibility
 
@@ -183,15 +183,17 @@ Read more: [Cards](https://packstub.dev/docs/filament-kanban/cards).
 ```php
 ->searchable(['reference', 'company', 'owner.name'])
 ->filters([
-    Filter::make('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
-    Filter::make('mine')->label('Assigned to me')->toggle()->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
+    Filter::select('owner_id')->label('Owners')->multiple()->options(fn () => User::pluck('name', 'id')->all()),
+    Filter::toggle('mine')->label('Assigned to me')->query(fn (Builder $query) => $query->where('owner_id', auth()->id())),
+    Filter::dateRange('due_at'),
 ])
+->filtersLayout(FiltersLayout::Dropdown) // behind a funnel button (the default), Toolbar, or AboveContent
 ->perColumn(50)
 ```
 
-Typing filters the loaded cards at once, then the server brings the matching cards of every column. A `Filter` is a select, a popover of checkboxes with `multiple()`, or an on/off chip with `toggle()`. The search and the active filters stay in the URL, so a filtered board can be bookmarked and shared. Each column loads its cards in pages as you scroll.
+Typing filters the loaded cards at once, then the server brings the matching cards of every column. A `Filter` is one of Filament's own fields: a select (one option, several with `multiple()`, typed with `searchable()`), a Yes / No select (`boolean()`), a checkbox (`toggle()`) or a date range (`dateRange()`); every value is checked again on the server. The search and the active filters stay in the URL, so a filtered board can be bookmarked and shared. Each column loads its cards in pages as you scroll.
 
-Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration#search).
+Read more: [Filters](https://packstub.dev/docs/filament-kanban/filters).
 
 ## Configuration
 
@@ -206,9 +208,9 @@ $board
 
 ![The board in dark mode](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/dark.png)
 
-The stylesheet is plain CSS on Filament's colour variables and follows dark mode. Restyle it with the `--pk-*` variables on `.pk` (`--pk-ring`, `--pk-col-width`, `--pk-card-bg`, `--pk-radius`, …) from your theme, prefixed so they win over the plugin's stylesheet (`.fi-body .pk { … }`).
+The board sits on the page like a Filament table: a container with a toolbar whose controls, filters and menus are Filament's own components, styled by the panel's theme. The stylesheet is plain CSS on Filament's colour variables and follows dark mode; restyle the rest with the `--ps-kanban-*` variables on `.ps-kanban` (`--ps-kanban-ring`, `--ps-kanban-col-width`, `--ps-kanban-card-bg`, `--ps-kanban-radius`, …), the scheme Gantt and Spreadsheet share, prefixed so they win over the plugin's stylesheet (`.fi-body .ps-kanban { … }`).
 
-Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration), the full fluent API.
+Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configuration), the full fluent API, and [Styling](https://packstub.dev/docs/filament-kanban/styling).
 
 ## Documentation
 
@@ -216,8 +218,11 @@ Read more: [Configuration](https://packstub.dev/docs/filament-kanban/configurati
 - [Columns](https://packstub.dev/docs/filament-kanban/columns)
 - [Cards](https://packstub.dev/docs/filament-kanban/cards)
 - [Actions](https://packstub.dev/docs/filament-kanban/actions)
+- [Swimlanes](https://packstub.dev/docs/filament-kanban/swimlanes)
 - [Moves and events](https://packstub.dev/docs/filament-kanban/moves)
+- [Filters](https://packstub.dev/docs/filament-kanban/filters)
 - [Configuration](https://packstub.dev/docs/filament-kanban/configuration)
+- [Styling](https://packstub.dev/docs/filament-kanban/styling)
 
 The same pages live in the [`docs/`](https://github.com/packstub/filament-kanban/tree/main/docs) directory of this repository.
 

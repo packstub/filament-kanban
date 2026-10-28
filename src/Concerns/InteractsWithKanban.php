@@ -4,11 +4,17 @@ namespace Packstub\Kanban\Concerns;
 
 use Filament\Actions\Action;
 use Filament\Actions\Contracts\HasActions;
+use Filament\Schemas\Schema;
+use Filament\Support\Enums\IconSize;
+use Filament\Support\View\ComponentAttributeBag;
+use Filament\Support\View\Components\DropdownComponent\ItemComponent;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
 use Livewire\Livewire;
 use Packstub\Kanban\Board;
 use Packstub\Kanban\Exceptions\MoveRejected;
+use Packstub\Kanban\Filter;
+use Packstub\Kanban\Support\FilterSelect;
 
 /**
  * The server side of a board, for any Livewire component (the plugin's pages use it).
@@ -186,6 +192,90 @@ trait InteractsWithKanban
     }
 
     /**
+     * A filter's options for the browser's select: the listed ones (at most optionsLimit),
+     * or the ones matching what the user typed in a searchable select.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    #[Renderless]
+    public function kanbanFilterOptions(mixed $name, mixed $search = null): array
+    {
+        $filter = is_string($name) ? $this->getKanban()->getFilter($name) : null;
+
+        if ($filter === null || $filter->isToggle() || $filter->isDateRange() || ($search !== null && ! is_string($search))) {
+            return [];
+        }
+
+        $search = $search === null ? '' : mb_substr(trim($search), 0, 200);
+
+        $options = $search === ''
+            ? array_slice($filter->getOptions(), 0, $filter->getOptionsLimit(), preserve_keys: true)
+            : $filter->getSearchResults($search);
+
+        return collect($options)->map(fn ($label, $value) => ['value' => (string) $value, 'label' => (string) $label])->values()->all();
+    }
+
+    /** The label of one value (a selected option restored from the URL), null when the filter does not know it. */
+    #[Renderless]
+    public function kanbanFilterOptionLabel(mixed $name, mixed $value = null): ?string
+    {
+        $filter = is_string($name) ? $this->getKanban()->getFilter($name) : null;
+
+        return $filter === null || $filter->isToggle() || $filter->isDateRange() || ! is_string($value) || $value === '' ? null : $filter->getOptionLabel($value);
+    }
+
+    /**
+     * The labels of a multiple select filter's values (ones restored from the URL),
+     * as the browser's select expects them (a list, read as `option.value` and
+     * `option.label`); a value with no label is left out.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    #[Renderless]
+    public function kanbanFilterOptionLabels(mixed $name, mixed $values = []): array
+    {
+        $filter = is_string($name) ? $this->getKanban()->getFilter($name) : null;
+
+        if ($filter === null || $filter->isToggle() || $filter->isDateRange() || ! is_array($values)) {
+            return [];
+        }
+
+        $labels = [];
+
+        // At most optionsLimit() distinct values: each one not among the options costs a getOptionLabelUsing() call.
+        $values = array_slice(array_values(array_unique(array_filter($values, fn ($value) => (is_string($value) && $value !== '' && mb_strlen($value) <= 255) || is_int($value)))), 0, $filter->getOptionsLimit());
+
+        foreach ($values as $value) {
+            $label = $filter->getOptionLabel($value);
+
+            if ($label !== null) {
+                $labels[] = ['value' => (string) $value, 'label' => $label];
+            }
+        }
+
+        return $labels;
+    }
+
+    /**
+     * A schema never rendered, one FilterSelect per select filter, keyed
+     * `kanbanFilters.<filter>`: Filament 4.16+ and 5.11+ ask a select's options
+     * through `callSchemaComponentMethod` with that key (see partials/select).
+     * Filament caches it by name on the first call.
+     */
+    public function kanbanFiltersSchema(Schema $schema): Schema
+    {
+        $components = [];
+
+        foreach ($this->getKanban()->getFilters() as $filter) {
+            if ($filter->isSelect() || $filter->isBoolean()) {
+                $components[] = FilterSelect::make($filter->getName())->key($filter->getName());
+            }
+        }
+
+        return $schema->components($components);
+    }
+
+    /**
      * Hook after a successful move (log it, notify someone…).
      *
      * @param  array<string, mixed>  $card
@@ -196,7 +286,7 @@ trait InteractsWithKanban
      * The search and filters in the page's query string, checked as any value from the
      * browser is: only the board's own filters, only values among their options.
      *
-     * @return array{search: string, filters: array<string, string|list<string>|bool>}
+     * @return array{search: string, filters: array<string, string|list<string>|bool|array{from: ?string, until: ?string}>}
      */
     protected function kanbanUrlState(Board $board): array
     {
@@ -219,15 +309,22 @@ trait InteractsWithKanban
     /**
      * What the browser needs to draw an action in a menu.
      *
-     * @return array{name: string, label: mixed, icon: string|null, color: string|null}
+     * @return array{name: string, label: mixed, icon: string|null, iconName: string|null, color: string|null, colorClasses: string}
      */
     protected function kanbanActionSummary(Action $action): array
     {
+        $color = is_string($color = $action->getColor()) ? $color : null;
+        $icon = $action->getIcon() ?? $action->getGroupedIcon();
+
         return [
             'name' => $action->getName(),
             'label' => $action->getLabel(),
-            'icon' => ($icon = $action->getIcon() ?? $action->getGroupedIcon()) ? \Filament\Support\generate_icon_html($icon)?->toHtml() : null,
-            'color' => is_string($color = $action->getColor()) ? $color : null,
+            'icon' => $icon ? \Filament\Support\generate_icon_html($icon, attributes: (new ComponentAttributeBag)->class(['fi-dropdown-list-item-icon']), size: IconSize::Medium)?->toHtml() : null,
+            // The icon by name, for a Filament button rendered in Blade (the selection bar's bulk actions).
+            'iconName' => $icon instanceof \BackedEnum ? (string) $icon->value : (is_string($icon) ? $icon : null),
+            'color' => $color,
+            // What Filament's dropdown item wears for the colour (nothing for gray, the default).
+            'colorClasses' => $color ? trim((string) (new ComponentAttributeBag)->color(ItemComponent::class, $color)->get('class', '')) : '',
         ];
     }
 
@@ -320,7 +417,8 @@ trait InteractsWithKanban
             'perColumn' => $board->getPerColumn(),
             'reorderable' => $board->isReorderable(),
             'searchable' => $board->isSearchable(),
-            'filters' => array_map(fn ($f) => ['name' => $f->getName(), 'label' => $f->getLabel(), 'type' => $f->getType(), 'options' => collect($f->getOptions())->map(fn ($label, $value) => ['value' => (string) $value, 'label' => $label])->values()->all()], $board->getFilters()),
+            'filters' => array_map(fn (Filter $filter) => $filter->toArray(), $board->getFilters()),
+            'filtersLayout' => $board->getFiltersLayout()->value,
             'selectable' => $board->isSelectable(),
             'maxSelection' => Board::MAX_SELECTION,
             'focus' => $board->hasFocusMode(),
