@@ -79,7 +79,8 @@
 
             {{-- the filters behind a funnel button (filtersLayout dropdown): the count of active ones on the button, a reset link in the panel --}}
             @if ($hasFilters && $filtersLayout === 'dropdown')
-                <x-filament::dropdown placement="bottom-end" width="xs" class="ps-kanban-filters-dropdown">
+                {{-- a panel of fields, not a menu: Filament 5.10+ would take the keys typed in a select's search for menu navigation --}}
+                <x-filament::dropdown placement="bottom-end" width="xs" class="ps-kanban-filters-dropdown" :menu="false">
                     <x-slot name="trigger">
                         {{-- the count sits on the button's corner, in the icon button's own badge container, as a table's filter trigger --}}
                         <x-filament::icon-button color="gray" :icon="Heroicon::OutlinedFunnel" :label="__('packstub-kanban::kanban.filters')" class="ps-kanban-filters-btn">
