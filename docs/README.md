@@ -35,6 +35,7 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 | [Filters](filters.md) | Select, multiple, searchable, boolean, toggle and date-range filters, where they are shown, the search and filters in the URL |
 | [Configuration](configuration.md) | Search, paging, polling, realtime with Echo, focus mode, density, and the full fluent API |
 | [Styling](styling.md) | The table-style container, the `--ps-kanban-*` variables shared with Gantt and Spreadsheet, dark mode, translations |
+| [Upgrading](upgrading.md) | Renames in 1.0 for a custom theme, a `Board` subclass or your own scripts |
 
 ## At a glance
 

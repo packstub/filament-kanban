@@ -15,7 +15,7 @@ First beta of 1.0, and a big one: swimlanes, bulk actions, realtime updates and 
 
 **Security:** moves are now checked on the server against the model policy's `update` (or the resource's `canEdit()`), and cards the user may not update are locked; `Board::authorizeMoves()` changes the rule. Colours and card URLs from user data are sanitized.
 
-**Upgrading:** CSS classes and variables are renamed from `pk` to `ps-kanban` (`.pk-card` → `.ps-kanban-card`), so update a custom theme. A subclass overriding `Board::counts()` or `orderingFor()` needs `countsOf()` and `applyOrdering()`.
+**Upgrading from 0.x:** CSS classes and variables are renamed from `pk` to `ps-kanban`, and two protected `Board` methods are renamed. See [Upgrading](docs/upgrading.md).
 
 Also fixed: moves saved in one transaction, reordering past the loaded cards, and the board no longer flashes unstyled on load.
 
