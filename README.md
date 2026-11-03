@@ -8,11 +8,14 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/packstub/filament-kanban/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/packstub/filament-kanban/actions/workflows/tests.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/packstub/filament-kanban.svg?style=flat-square)](https://packagist.org/packages/packstub/filament-kanban)
 [![License](https://img.shields.io/packagist/l/packstub/filament-kanban.svg?style=flat-square)](https://github.com/packstub/filament-kanban/blob/main/LICENSE.md)
+[![Listed on filamentphp.com](https://img.shields.io/badge/filamentphp.com-listed-fb7185?style=flat-square&logo=filament&logoColor=white)](https://filamentphp.com/plugins/packstub-kanban)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/icaliman)
 
 </div>
 
 A fast, simple Kanban board for Filament: a drop lands at once, the server checks every rule, and your Filament actions work on every card.
+
+![Dragging deals across a Filament Kanban board: a lead moved to Qualified, the one stage it may go to lit and the column totals following, then a qualified deal moved on to Proposal](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/kanban.gif)
 
 ## Features
 

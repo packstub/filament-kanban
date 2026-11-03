@@ -8,6 +8,8 @@ A fast, simple Kanban board for Filament v4 and v5. The browser owns the board, 
 - Packagist: [packstub/filament-kanban](https://packagist.org/packages/packstub/filament-kanban)
 - Support: [GitHub issues](https://github.com/packstub/filament-kanban/issues)
 
+![Dragging deals across a Filament Kanban board: a lead moved to Qualified, the one stage it may go to lit and the column totals following, then a qualified deal moved on to Proposal](https://raw.githubusercontent.com/packstub/art/main/filament-kanban/docs/kanban.gif)
+
 ## Features
 
 - **[Instant drag and drop](moves.md)**: cards land at once; a refused move slides back.
