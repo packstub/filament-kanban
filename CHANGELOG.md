@@ -2,6 +2,10 @@
 
 All notable changes to `packstub/filament-kanban` are documented in this file.
 
+## Unreleased
+
+- `composer.json`'s homepage points at the package's page on packstub.dev
+
 ## 1.0.0-beta.1 - 2026-10-28
 
 First beta of 1.0, and a big one: swimlanes, bulk actions, realtime updates and a board built from Filament's own components.
