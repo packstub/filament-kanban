@@ -2,7 +2,7 @@
 
 ## From 0.x to 1.0
 
-1.0.0-beta.1 renames a few things that a custom theme or a `Board` subclass may use. Nothing else needs changing: run `composer update packstub/filament-kanban` and `php artisan filament:assets`.
+1.0 renames a few things that a custom theme or a `Board` subclass may use. Nothing else needs changing: run `composer update packstub/filament-kanban` and `php artisan filament:assets`.
 
 ### CSS classes and variables
 

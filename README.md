@@ -35,7 +35,7 @@ A fast, simple Kanban board for Filament: a drop lands at once, the server check
 
 | Plugin | Filament | Laravel | PHP |
 | --- | --- | --- | --- |
-| 0.x | 4.x, 5.x | 12.x, 13.x | 8.3+ |
+| 1.x | 4.x, 5.x | 12.x, 13.x | 8.3+ |
 
 ## Installation
 
