@@ -4,8 +4,24 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
-- `composer.json`'s homepage points at the package's page on packstub.dev
+## 1.0.0 - 2026-11-24
+
+The first stable release: the names you build against stay the same until 2.0. Everything from 1.0.0-beta.1 is in it.
+
+- Swimlanes: rows by a second attribute, such as the assignee
+- Bulk selection with "Move to…" and your own bulk actions; column actions in each column's menu
+- Undo after a move, and realtime updates with Laravel Echo (`broadcast()`)
+- Richer cards: description, progress bar, due date, badge icons, and `Card::locked()`
+- Filters as Filament fields (select, multiple, searchable, toggle, date range), kept in the URL
+- Table / Board switch, navigation badge, density toggle, keyboard and screen reader support, narrow screens
 - Fixed "Move to…" in a card's menu: the board no longer throws in the console, focus returns to the moved card, and `kanban-card-moved` fires as it does after a drag
+- `composer.json`'s homepage points at the package's page on packstub.dev
+
+**Security:** moves are checked on the server against the model policy's `update` (or the resource's `canEdit()`), and cards the user may not update are locked; `Board::authorizeMoves()` changes the rule. Colours and card URLs from user data are sanitized.
+
+**Upgrading from 0.x:** CSS classes and variables are renamed from `pk` to `ps-kanban`, and two protected `Board` methods are renamed. See [Upgrading](docs/upgrading.md). From the beta, run `composer update packstub/filament-kanban` and `php artisan filament:assets`.
+
+Docs: https://packstub.dev/docs/filament-kanban
 
 ## 1.0.0-beta.1 - 2026-10-28
 
