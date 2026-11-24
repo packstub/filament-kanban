@@ -370,3 +370,12 @@ it('gives a board drawn again its column actions with the columns, and only then
 
     $test->call('$refresh')->assertSeeHtml('\u0022columns\u0022:null'); // a re-render evaluates no column action
 });
+
+it('takes $root, $refs, $wire and $dispatch from the board, never from the element that ran a method', function () {
+    // A card's "Move to…" item calls moveTo() from inside an x-for; the move draws the card again
+    // elsewhere and removes that item, so magics read through `this` there come back undefined.
+    $script = file_get_contents(__DIR__.'/../../resources/dist/kanban.js');
+
+    expect($script)->toContain('host = this')
+        ->and(preg_match('/this\.\$(root|refs|wire|dispatch)\b/', $script))->toBe(0);
+});
