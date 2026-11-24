@@ -67,6 +67,12 @@ function localDay(now = new Date()) {
 }
 
 export default function packstubKanban(config) {
+    // The component as init() sees it, for $root, $refs, $wire and $dispatch. A method run
+    // from an element inside an x-for (a card's "Move to…" item) gets those magics from that
+    // element, and once the move draws the card again elsewhere the element is gone: $root
+    // and $refs come back undefined and $dispatch never reaches the window.
+    let host = null
+
     return {
         columns: config.columns || [],
         lanes: config.lanes || null,
@@ -112,6 +118,7 @@ export default function packstubKanban(config) {
         },
 
         init() {
+            host = this
             this.restore()
 
             // A bookmarked or shared board: the page was drawn as its URL says (config.initial).
@@ -135,9 +142,9 @@ export default function packstubKanban(config) {
 
             this.onSlash = (event) => {
                 const tag = (event.target.tagName || '').toLowerCase()
-                if (event.key === '/' && ! ['input', 'textarea', 'select'].includes(tag) && ! event.target.isContentEditable && this.$refs.search) {
+                if (event.key === '/' && ! ['input', 'textarea', 'select'].includes(tag) && ! event.target.isContentEditable && host.$refs.search) {
                     event.preventDefault()
-                    this.$refs.search.focus()
+                    host.$refs.search.focus()
                 }
             }
             window.addEventListener('keydown', this.onSlash)
@@ -145,10 +152,10 @@ export default function packstubKanban(config) {
             // The board fills the window below its own top edge, so columns scroll
             // inside it and the horizontal scrollbar is always in view.
             this.fit = () => {
-                const board = this.$refs.board
+                const board = host.$refs.board
                 if (! board) return
                 const top = board.getBoundingClientRect().top + window.scrollY
-                this.$root.style.setProperty('--ps-kanban-height', Math.max(360, window.innerHeight - top - 16) + 'px')
+                host.$root.style.setProperty('--ps-kanban-height', Math.max(360, window.innerHeight - top - 16) + 'px')
             }
             window.addEventListener('resize', this.fit)
             this.$nextTick(this.fit)
@@ -306,7 +313,7 @@ export default function packstubKanban(config) {
             const lane = this.findColumn(from)?.cards.find((c) => c.id === id)?.lane
             this.move(id, from, to, 0, lane)
             const cell = lane === undefined ? '' : `[data-lane="${CSS.escape(lane)}"]`
-            this.$nextTick(() => this.$refs.board.querySelector(`.ps-kanban-cards[data-column="${CSS.escape(to)}"]${cell}`)?.scrollTo({ top: 0, behavior: 'smooth' }))
+            this.$nextTick(() => host.$refs.board.querySelector(`.ps-kanban-cards[data-column="${CSS.escape(to)}"]${cell}`)?.scrollTo({ top: 0, behavior: 'smooth' }))
         },
 
         // Undo is a move back, through every rule and moveUsing() again; a refusal shows as usual.
@@ -399,7 +406,7 @@ export default function packstubKanban(config) {
                 if (keepFocus()) this.refocus(id, from)
             }
 
-            this.$wire.kanbanMove(id, to, order, this.search, this.active, laned ? lane : null, ORIGIN)
+            host.$wire.kanbanMove(id, to, order, this.search, this.active, laned ? lane : null, ORIGIN)
                 .then((result) => {
                     if (! result?.ok) {
                         return undo(result?.message || this.tr('failed'))
@@ -413,7 +420,7 @@ export default function packstubKanban(config) {
                     }
 
                     if (from !== to || (laned && lane !== fromLane)) {
-                        this.$dispatch('kanban-card-moved', { id, from, to, ...(laned ? { lane } : {}), card: result.card })
+                        host.$dispatch('kanban-card-moved', { id, from, to, ...(laned ? { lane } : {}), card: result.card })
                         // The Undo notification is a live region of its own; without it the board announces the move.
                         const offered = ! options.undo && this.offerUndo(id, from, to, cellAt, laned ? fromLane : undefined, laned ? lane : undefined)
                         if (from !== to && ! offered) this.announce(this.tr('moved_to', { column: target.label }))
@@ -479,7 +486,7 @@ export default function packstubKanban(config) {
 
         runAction(name, card) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecord: card.id, kanbanOrigin: ORIGIN })
+            host.$wire.mountAction(name, { kanbanRecord: card.id, kanbanOrigin: ORIGIN })
         },
 
         // Whether a click on the card runs the click action (a card with a url is a link anyway).
@@ -507,11 +514,11 @@ export default function packstubKanban(config) {
         // The server resolves the column again and takes the search and filters as it does on a refresh.
         runColumnAction(name, column) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanColumn: column.name, kanbanSearch: this.search, kanbanFilters: this.active, kanbanOrigin: ORIGIN })
+            host.$wire.mountAction(name, { kanbanColumn: column.name, kanbanSearch: this.search, kanbanFilters: this.active, kanbanOrigin: ORIGIN })
         },
 
         create(column) {
-            this.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name, kanbanOrigin: ORIGIN })
+            host.$wire.mountAction(this.createAction.name, { kanbanColumn: column.name, kanbanOrigin: ORIGIN })
         },
 
         targets(from) {
@@ -583,7 +590,7 @@ export default function packstubKanban(config) {
             this.menu = this.menu === key ? null : key
             if (this.menu) {
                 this.placeMenu(card.id)
-                this.$nextTick(() => this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(card.id)}"] .ps-kanban-menu-item`)?.focus())
+                this.$nextTick(() => host.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(card.id)}"] .ps-kanban-menu-item`)?.focus())
             }
         },
 
@@ -593,12 +600,12 @@ export default function packstubKanban(config) {
         // itself (a `:style` binding would fight x-show over the style attribute). A scroll
         // anywhere on the board closes it rather than leaving it adrift.
         placeMenu(id) {
-            const card = this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(id)}"]`)
+            const card = host.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(id)}"]`)
             const panel = card?.querySelector(':scope > .ps-kanban-card-popover')
             const anchor = card?.querySelector(':scope > .ps-kanban-card-menu') ?? card
             if (! panel || ! anchor) return
             const rect = anchor.getBoundingClientRect()
-            const rtl = getComputedStyle(this.$root).direction === 'rtl'
+            const rtl = getComputedStyle(host.$root).direction === 'rtl'
             const below = window.innerHeight - rect.bottom
             const under = below > 240 || rect.top < below
             Object.assign(panel.style, {
@@ -620,20 +627,20 @@ export default function packstubKanban(config) {
         // button takes the focus instead, so it never drops to <body>.
         refocus(id, column) {
             this.$nextTick(() => {
-                const link = this.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(id)}"] > .ps-kanban-card-link`)
+                const link = host.$root.querySelector(`.ps-kanban-card[data-id="${CSS.escape(id)}"] > .ps-kanban-card-link`)
                 if (link?.offsetParent) return link.focus()
 
                 const name = CSS.escape(column ?? '')
                 const fallback = this.narrow
-                    ? this.$refs.tabs?.querySelector(`.ps-kanban-tab[data-column="${name}"]`)
-                    : this.$refs.board?.querySelector(`.ps-kanban-col[data-column="${name}"] .ps-kanban-fold`)
+                    ? host.$refs.tabs?.querySelector(`.ps-kanban-tab[data-column="${name}"]`)
+                    : host.$refs.board?.querySelector(`.ps-kanban-col[data-column="${name}"] .ps-kanban-fold`)
                 fallback?.focus()
             })
         },
 
         // The live region reads a text once; cleared first so the same text is read again.
         announce(text) {
-            const live = this.$refs.live
+            const live = host.$refs.live
             if (! live || ! text) return
             live.textContent = ''
             setTimeout(() => { live.textContent = text }, 50)
@@ -672,7 +679,7 @@ export default function packstubKanban(config) {
             this.tab = name
             this.menu = null
             this.persist()
-            this.$nextTick(() => this.$refs.tabs?.querySelector('.ps-kanban-tab.fi-active')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
+            this.$nextTick(() => host.$refs.tabs?.querySelector('.ps-kanban-tab.fi-active')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }))
         },
 
         // Roving tabindex on the tab bar: the arrows (wrapping), Home and End select and focus the next tab.
@@ -783,7 +790,7 @@ export default function packstubKanban(config) {
 
         runBulkAction(name) {
             this.menu = null
-            this.$wire.mountAction(name, { kanbanRecords: this.selectedCards().map(([, card]) => card.id), kanbanOrigin: ORIGIN })
+            host.$wire.mountAction(name, { kanbanRecords: this.selectedCards().map(([, card]) => card.id), kanbanOrigin: ORIGIN })
         },
 
         // Every selected card moves at once; the ones the server refuses come back, with one notification.
@@ -830,7 +837,7 @@ export default function packstubKanban(config) {
 
             this.pending++
 
-            this.$wire.kanbanMoveMany(moves.map((m) => m.card.id), to, this.search, this.active, null, ORIGIN)
+            host.$wire.kanbanMoveMany(moves.map((m) => m.card.id), to, this.search, this.active, null, ORIGIN)
                 .then((result) => {
                     if (! result || (! result.ok && result.message)) {
                         moves.forEach(undo)
@@ -850,7 +857,7 @@ export default function packstubKanban(config) {
                     for (const fresh of result.moved || []) {
                         const move = moves.find((m) => m.card.id === fresh.id)
                         const now = target.cards.findIndex((c) => c.id === fresh.id)
-                        if (move) this.$dispatch('kanban-card-moved', { id: fresh.id, from: move.source.name, to, card: fresh })
+                        if (move) host.$dispatch('kanban-card-moved', { id: fresh.id, from: move.source.name, to, card: fresh })
                         if (now >= 0) target.cards[now] = { ...fresh, _flash: true }
                     }
 
@@ -917,7 +924,7 @@ export default function packstubKanban(config) {
                 this.writeUrl()
             }
 
-            this.$wire.kanbanRefresh(this.search, this.active, loaded, ! this.drawn).catch(() => null).then((result) => {
+            host.$wire.kanbanRefresh(this.search, this.active, loaded, ! this.drawn).catch(() => null).then((result) => {
                 if (seq !== this.refreshSeq) {
                     return
                 }
@@ -1027,7 +1034,7 @@ export default function packstubKanban(config) {
         /** The fields follow the browser's state (a restored URL, Reset, a pick made elsewhere); no request is sent. */
         syncFields() {
             if (! this.filters.length) return
-            try { this.$wire.$set('kanbanFilters', this.fieldState(), false) } catch (e) {}
+            try { host.$wire.$set('kanbanFilters', this.fieldState(), false) } catch (e) {}
         },
 
         /** An option chosen in a select filter (null or '' is "all"; a list for a multiple one). A few quick picks are one request. */
@@ -1195,7 +1202,7 @@ export default function packstubKanban(config) {
 
             this.loading[key] = true
 
-            this.$wire.kanbanMore(column.name, this.loadedIn(column, lane), this.search, this.active, this.lanes ? lane.value : null)
+            host.$wire.kanbanMore(column.name, this.loadedIn(column, lane), this.search, this.active, this.lanes ? lane.value : null)
                 .then((result) => {
                     Object.assign(this.icons, result?.icons || {})
                     const known = new Set(column.cards.map((c) => c.id))
@@ -1208,7 +1215,7 @@ export default function packstubKanban(config) {
                     // Still in view (a short page)? Observing again reports it, and the next page loads.
                     this.$nextTick(() => {
                         const cell = this.lanes ? `[data-lane="${CSS.escape(lane.value)}"]` : ''
-                        const el = this.$root.querySelector(`.ps-kanban-more[data-column="${CSS.escape(column.name)}"]${cell}`)
+                        const el = host.$root.querySelector(`.ps-kanban-more[data-column="${CSS.escape(column.name)}"]${cell}`)
                         if (el && this.moreObserver) {
                             this.moreObserver.unobserve(el)
                             this.moreObserver.observe(el)

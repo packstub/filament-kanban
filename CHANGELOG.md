@@ -5,6 +5,7 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 ## Unreleased
 
 - `composer.json`'s homepage points at the package's page on packstub.dev
+- Fixed "Move to…" in a card's menu: the board no longer throws in the console, focus returns to the moved card, and `kanban-card-moved` fires as it does after a drag
 
 ## 1.0.0-beta.1 - 2026-10-28
 
