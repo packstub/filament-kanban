@@ -2,8 +2,8 @@
 
 use Packstub\Kanban\Tests\Fixtures\TaskBoard;
 
-it('ships every string in all four languages', function () {
-    $keys = collect(['en', 'ro', 'ru', 'de'])
+it('ships every string in all languages', function () {
+    $keys = collect(['en', 'ro', 'ru', 'de', 'fr'])
         ->mapWithKeys(fn (string $locale) => [$locale => array_keys(require __DIR__."/../../resources/lang/{$locale}/kanban.php")]);
 
     expect($keys['en'])->toContain('column_label', 'moved_to', 'loaded_more', 'matches_count', 'compact', 'comfortable');
@@ -15,7 +15,7 @@ it('ships every string in all four languages', function () {
 });
 
 it('gives every counted announcement its plural forms, and the browser the locale to pick them', function () {
-    foreach (['en' => 2, 'de' => 2, 'ro' => 3, 'ru' => 3] as $locale => $forms) {
+    foreach (['en' => 2, 'de' => 2, 'fr' => 2, 'ro' => 3, 'ru' => 3] as $locale => $forms) {
         $strings = require __DIR__."/../../resources/lang/{$locale}/kanban.php";
 
         foreach (['column_label', 'loaded_more', 'matches_count'] as $key) {

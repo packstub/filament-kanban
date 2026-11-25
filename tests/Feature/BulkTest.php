@@ -163,10 +163,10 @@ it('offers selection with bulk actions, or when asked for, and not otherwise', f
         ->and(Board::make()->selectable(fn () => true)->isSelectable())->toBeTrue();
 });
 
-it('keeps the four languages in step', function () {
+it('keeps every language in step', function () {
     $keys = array_keys(require __DIR__.'/../../resources/lang/en/kanban.php');
 
-    foreach (['ro', 'ru', 'de'] as $lang) {
+    foreach (['ro', 'ru', 'de', 'fr'] as $lang) {
         expect(array_keys(require __DIR__."/../../resources/lang/{$lang}/kanban.php"))->toBe($keys);
     }
 
