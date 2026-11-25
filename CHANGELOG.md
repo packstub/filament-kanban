@@ -4,7 +4,7 @@ All notable changes to `packstub/filament-kanban` are documented in this file.
 
 ## Unreleased
 
-## 1.0.0 - 2026-11-24
+## 1.0.0 - 2026-11-25
 
 The first stable release: the names you build against stay the same until 2.0. Everything from 1.0.0-beta.1 is in it.
 
